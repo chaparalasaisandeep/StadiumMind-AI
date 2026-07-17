@@ -1,0 +1,79 @@
+import React from "react";
+import { Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+
+export interface MapMarkerData {
+  id: string;
+  name: string;
+  type: "gate" | "concession" | "incident";
+  lat: number;
+  lng: number;
+  details: string;
+  meta?: any;
+}
+
+interface MarkerLayerProps {
+  markers: MapMarkerData[];
+  onMarkerClick?: (marker: MapMarkerData) => void;
+  renderPopupContent?: (marker: MapMarkerData) => React.ReactNode;
+}
+
+const createCustomIcon = (type: "gate" | "concession" | "incident", severity?: string) => {
+  let colorClass = "bg-[#6EB8E1]";
+  let glyph = "G";
+
+  if (type === "concession") {
+    colorClass = "bg-amber-500";
+    glyph = "C";
+  } else if (type === "incident") {
+    colorClass = severity === "high" ? "bg-rose-600 animate-pulse" : "bg-orange-500";
+    glyph = "!";
+  }
+
+  return L.divIcon({
+    html: `
+      <div class="relative flex items-center justify-center w-7 h-7 rounded-full border-2 border-slate-950 shadow-md text-white font-bold text-xs ${colorClass}">
+        ${glyph}
+        <span class="absolute -bottom-1 w-2 h-2 ${colorClass} rotate-45 border-r border-b border-slate-950"></span>
+      </div>
+    `,
+    className: "custom-leaflet-icon",
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -28],
+  });
+};
+
+export default function MarkerLayer({ markers, onMarkerClick, renderPopupContent }: MarkerLayerProps) {
+  return (
+    <>
+      {markers.map((marker) => {
+        const severity = marker.meta?.severity;
+        const icon = createCustomIcon(marker.type, severity);
+
+        return (
+          <Marker
+            key={`${marker.type}-${marker.id}`}
+            position={[marker.lat, marker.lng]}
+            icon={icon}
+            eventHandlers={{
+              click: () => {
+                if (onMarkerClick) {
+                  onMarkerClick(marker);
+                }
+              },
+            }}
+          >
+            {renderPopupContent && (
+              <Popup>
+                <div className="text-slate-900 font-sans p-1">
+                  {renderPopupContent(marker)}
+                </div>
+              </Popup>
+            )}
+          </Marker>
+        );
+      })}
+    </>
+  );
+}

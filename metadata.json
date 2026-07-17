@@ -1,0 +1,10 @@
+{
+  "name": "StadiumMind AI",
+  "description": "The AI Operating System for FIFA World Cup 2026 Stadiums. A production-quality enterprise dashboard and AI operations hub for fans, volunteers, security, medical, and admin teams.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

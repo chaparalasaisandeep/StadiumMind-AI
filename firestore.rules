@@ -1,0 +1,275 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------
+    // GLOBAL SECURITY HELPERS (PHASE 3)
+    // -------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Safely look up user roles stored in the private user collection
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() 
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('Admin');
+    }
+
+    function isOrganizer() {
+      return hasRole('Organizer');
+    }
+
+    function isSecurity() {
+      return hasRole('Security');
+    }
+
+    function isVolunteer() {
+      return hasRole('Volunteer');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // -------------------------------------------------------------
+    // GLOBAL SAFETY NET
+    // -------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------
+    // VALIDATION HELPERS (PHASE 4)
+    // -------------------------------------------------------------
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt'])
+        && data.keys().size() <= 6
+        && data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 256
+        && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 128
+        && data.role is string && (data.role == 'Fan' || data.role == 'Volunteer' || data.role == 'Organizer' || data.role == 'Security' || data.role == 'Admin' || data.role == 'Medical' || data.role == 'Transport' || data.role == 'Accessibility')
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    function isValidStadium(data) {
+      return data.keys().hasAll(['id', 'name', 'city', 'country', 'lat', 'lng', 'capacity', 'gatesCount'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 256
+        && data.city is string && data.city.size() > 0 && data.city.size() <= 256
+        && data.country is string && (data.country == 'USA' || data.country == 'Canada' || data.country == 'Mexico')
+        && (data.lat is float || data.lat is int)
+        && (data.lng is float || data.lng is int)
+        && data.capacity is int && data.capacity >= 0
+        && data.gatesCount is int && data.gatesCount >= 0;
+    }
+
+    function isValidMatch(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'teamA', 'teamB', 'kickoffTime', 'status', 'attendance'])
+        && data.keys().size() <= 7
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && data.teamA is string && data.teamA.size() > 0 && data.teamA.size() <= 256
+        && data.teamB is string && data.teamB.size() > 0 && data.teamB.size() <= 256
+        && data.kickoffTime is string && data.kickoffTime.size() <= 50
+        && data.status is string && (data.status == 'scheduled' || data.status == 'live' || data.status == 'completed')
+        && data.attendance is int && data.attendance >= 0;
+    }
+
+    function isValidVolunteerTask(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'assignedTo', 'section', 'status'])
+        && data.keys().size() <= 6
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 256
+        && data.description is string && data.description.size() > 0 && data.description.size() <= 2000
+        && data.assignedTo is string && data.assignedTo.size() > 0 && data.assignedTo.size() <= 128
+        && data.section is string && data.section.size() > 0 && data.section.size() <= 128
+        && data.status is string && (data.status == 'pending' || data.status == 'in-progress' || data.status == 'completed');
+    }
+
+    function isValidAlert(data) {
+      return data.keys().hasAll(['id', 'title', 'type', 'severity', 'location', 'lat', 'lng', 'status', 'timestamp'])
+        && data.keys().size() <= 9
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 256
+        && data.type is string && (data.type == 'security' || data.type == 'medical' || data.type == 'congestion' || data.type == 'maintenance')
+        && data.severity is string && (data.severity == 'low' || data.severity == 'medium' || data.severity == 'high')
+        && data.location is string && data.location.size() > 0 && data.location.size() <= 256
+        && (data.lat is float || data.lat is int)
+        && (data.lng is float || data.lng is int)
+        && data.status is string && (data.status == 'reported' || data.status == 'dispatched' || data.status == 'resolved')
+        && data.timestamp is string && data.timestamp.size() <= 50;
+    }
+
+    function isValidTransitSchedule(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'route', 'type', 'activeUnits', 'waitTimeMinutes', 'status'])
+        && data.keys().size() <= 7
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && data.route is string && data.route.size() > 0 && data.route.size() <= 256
+        && data.type is string && (data.type == 'shuttle' || data.type == 'metro' || data.type == 'train' || data.type == 'bus')
+        && data.activeUnits is int && data.activeUnits >= 0
+        && data.waitTimeMinutes is int && data.waitTimeMinutes >= 0
+        && data.status is string && (data.status == 'normal' || data.status == 'delayed' || data.status == 'suspended');
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'title', 'content', 'category', 'audience', 'timestamp'])
+        && data.keys().size() <= 7
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 256
+        && data.content is string && data.content.size() > 0 && data.content.size() <= 5000
+        && data.category is string && (data.category == 'general' || data.category == 'emergency' || data.category == 'transit' || data.category == 'accessibility')
+        && data.audience is string && (data.audience == 'all' || data.audience == 'volunteers' || data.audience == 'staff')
+        && data.timestamp is string && data.timestamp.size() <= 50;
+    }
+
+    function isValidCrowdMetrics(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'gateId', 'pressure', 'flowRate', 'congestionIndex', 'timestamp'])
+        && data.keys().size() <= 7
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && data.gateId is string && data.gateId.size() > 0 && data.gateId.size() <= 128
+        && data.pressure is string && (data.pressure == 'low' || data.pressure == 'medium' || data.pressure == 'high')
+        && data.flowRate is int && data.flowRate >= 0
+        && data.congestionIndex is int && data.congestionIndex >= 0 && data.congestionIndex <= 100
+        && data.timestamp is string && data.timestamp.size() <= 50;
+    }
+
+    function isValidParkingState(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'lotName', 'occupancyPercentage', 'status', 'accessibilitySpotsFree'])
+        && data.keys().size() <= 6
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && data.lotName is string && data.lotName.size() > 0 && data.lotName.size() <= 256
+        && data.occupancyPercentage is int && data.occupancyPercentage >= 0 && data.occupancyPercentage <= 100
+        && data.status is string && (data.status == 'available' || data.status == 'busy' || data.status == 'full')
+        && data.accessibilitySpotsFree is int && data.accessibilitySpotsFree >= 0;
+    }
+
+    function isValidSustainabilityMetric(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'wasteRecycledKg', 'energySavedKwh', 'waterSavedLitres', 'timestamp'])
+        && data.keys().size() <= 6
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && (data.wasteRecycledKg is float || data.wasteRecycledKg is int) && data.wasteRecycledKg >= 0
+        && (data.energySavedKwh is float || data.energySavedKwh is int) && data.energySavedKwh >= 0
+        && (data.waterSavedLitres is float || data.waterSavedLitres is int) && data.waterSavedLitres >= 0
+        && data.timestamp is string && data.timestamp.size() <= 50;
+    }
+
+    // -------------------------------------------------------------
+    // COLLECTION BOUND OPERATIONS
+    // -------------------------------------------------------------
+
+    // 1. Users Profile Registry
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isOwner(userId) && isValidId(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming())
+                       && (
+                         isAdmin() || 
+                         (isOwner(userId) && (incoming().role == existing().role))
+                       );
+      allow delete: if isAdmin();
+    }
+
+    // 2. Stadium Venue Rules
+    match /stadiums/{stadiumId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(stadiumId) && isValidStadium(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 3. Match Events
+    match /matches/{matchId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(matchId) && isValidMatch(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 4. Volunteers Assigned Tasks
+    match /volunteers/{taskId} {
+      allow get: if isSignedIn() && isValidId(taskId) 
+                    && (isAdmin() || isOrganizer() || (isVolunteer() && existing().assignedTo == request.auth.uid));
+      allow list: if isSignedIn() 
+                    && (isAdmin() || isOrganizer() || (isVolunteer() && resource.data.assignedTo == request.auth.uid));
+      allow create: if (isAdmin() || isOrganizer()) && isValidId(taskId) && isValidVolunteerTask(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+      allow update: if isSignedIn() && isValidId(taskId) && isValidVolunteerTask(incoming())
+                       && (
+                            isAdmin() || isOrganizer() || 
+                            (isVolunteer() && existing().assignedTo == request.auth.uid 
+                             && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+                          );
+    }
+
+    // 5. Emergency Alerts & Incidents
+    match /alerts/{alertId} {
+      allow read: if isAdmin() || isOrganizer() || isSecurity();
+      allow create, update: if (isAdmin() || isOrganizer() || isSecurity()) && isValidId(alertId) && isValidAlert(incoming());
+      allow delete: if isAdmin() || isOrganizer() || isSecurity();
+    }
+
+    // 6. Transport Route Schedules
+    match /transport/{routeId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(routeId) && isValidTransitSchedule(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 7. Announcement Bulletins
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(announcementId) && isValidAnnouncement(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 8. Gate Crowd Density Indexes
+    match /crowd/{metricId} {
+      allow read: if isAdmin() || isOrganizer() || isSecurity();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(metricId) && isValidCrowdMetrics(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 9. Parking Lot occupancy state
+    match /parking/{lotId} {
+      allow read: if isAdmin() || isOrganizer();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(lotId) && isValidParkingState(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 10. Environmental Sustainability records
+    match /sustainability/{metricId} {
+      allow read: if isAdmin() || isOrganizer();
+      allow create, update: if (isAdmin() || isOrganizer()) && isValidId(metricId) && isValidSustainabilityMetric(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+  }
+}

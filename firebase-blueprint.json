@@ -1,0 +1,421 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role details and assigned sectors",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The unique user authentication ID"
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's registered email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Fan", "Volunteer", "Organizer", "Security", "Medical", "Transport", "Admin", "Accessibility"],
+          "description": "The user's role designation"
+        },
+        "assignedSector": {
+          "type": "string",
+          "description": "Optionally assigned physical sector in the stadium"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp representing user creation"
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "createdAt"]
+    },
+    "Stadium": {
+      "title": "Stadium",
+      "description": "Stadium venue parameters",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stadium unique identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Stadium venue name"
+        },
+        "city": {
+          "type": "string",
+          "description": "City name where stadium is located"
+        },
+        "country": {
+          "type": "string",
+          "enum": ["USA", "Canada", "Mexico"],
+          "description": "Country where the stadium resides"
+        },
+        "lat": {
+          "type": "number",
+          "description": "Latitude coordinate of the stadium"
+        },
+        "lng": {
+          "type": "number",
+          "description": "Longitude coordinate of the stadium"
+        },
+        "capacity": {
+          "type": "integer",
+          "description": "Total capacity of the stadium venue"
+        },
+        "gatesCount": {
+          "type": "integer",
+          "description": "Number of public ingress/egress gates"
+        },
+        "emergencyExitPlanUrl": {
+          "type": "string",
+          "description": "Optional PDF URL of evacuation guidelines"
+        }
+      },
+      "required": ["id", "name", "city", "country", "lat", "lng", "capacity", "gatesCount"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Football match schedule details",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Match unique identifier"
+        },
+        "stadiumId": {
+          "type": "string",
+          "description": "The stadium identifier host"
+        },
+        "teamA": {
+          "type": "string",
+          "description": "First competing team name"
+        },
+        "teamB": {
+          "type": "string",
+          "description": "Second competing team name"
+        },
+        "kickoffTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Match kickoff ISO timestamp"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["scheduled", "live", "completed"],
+          "description": "Current status of the match"
+        },
+        "attendance": {
+          "type": "integer",
+          "description": "Actual or ticketed occupancy count"
+        }
+      },
+      "required": ["id", "stadiumId", "teamA", "teamB", "kickoffTime", "status", "attendance"]
+    },
+    "VolunteerTask": {
+      "title": "VolunteerTask",
+      "description": "Assigned tasks for volunteers",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique task identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the volunteer duty"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed guidelines for execution"
+        },
+        "assignedTo": {
+          "type": "string",
+          "description": "UID of assigned volunteer"
+        },
+        "section": {
+          "type": "string",
+          "description": "Stadium section area of action"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in-progress", "completed"],
+          "description": "Current status of duty completion"
+        }
+      },
+      "required": ["id", "title", "description", "assignedTo", "section", "status"]
+    },
+    "AlertIncident": {
+      "title": "AlertIncident",
+      "description": "Security or emergency incident tracking",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Incident unique identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Summary title of the threat or alarm"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["security", "medical", "congestion", "maintenance"],
+          "description": "Classification of the hazard"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "description": "Severity index"
+        },
+        "location": {
+          "type": "string",
+          "description": "Named localized physical area"
+        },
+        "lat": {
+          "type": "number",
+          "description": "Latitude offset of incident"
+        },
+        "lng": {
+          "type": "number",
+          "description": "Longitude offset of incident"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["reported", "dispatched", "resolved"],
+          "description": "Workflow resolution status"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Time details logged"
+        }
+      },
+      "required": ["id", "title", "type", "severity", "location", "lat", "lng", "status", "timestamp"]
+    },
+    "TransitSchedule": {
+      "title": "TransitSchedule",
+      "description": "Transport links and waiting durations",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique transit option identifier"
+        },
+        "stadiumId": {
+          "type": "string",
+          "description": "Stadium host identifier"
+        },
+        "route": {
+          "type": "string",
+          "description": "Route destination summary"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["shuttle", "metro", "train", "bus"],
+          "description": "Mode of transportation"
+        },
+        "activeUnits": {
+          "type": "integer",
+          "description": "Active operational vehicles"
+        },
+        "waitTimeMinutes": {
+          "type": "integer",
+          "description": "Average current arrival lag"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["normal", "delayed", "suspended"],
+          "description": "Transit network condition"
+        }
+      },
+      "required": ["id", "stadiumId", "route", "type", "activeUnits", "waitTimeMinutes", "status"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Venue public service or alert broadcast",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique announcement code"
+        },
+        "stadiumId": {
+          "type": "string",
+          "description": "Target stadium host identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Header title of the broadcast"
+        },
+        "content": {
+          "type": "string",
+          "description": "Main announcement statement"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["general", "emergency", "transit", "accessibility"],
+          "description": "Topic category classification"
+        },
+        "audience": {
+          "type": "string",
+          "enum": ["all", "volunteers", "staff"],
+          "description": "Intended target user demographics"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Post time coordinate"
+        }
+      },
+      "required": ["id", "stadiumId", "title", "content", "category", "audience", "timestamp"]
+    },
+    "CrowdMetrics": {
+      "title": "CrowdMetrics",
+      "description": "Queue pressure sensor logs",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Sensor metric identifier"
+        },
+        "stadiumId": {
+          "type": "string",
+          "description": "Stadium host identifier"
+        },
+        "gateId": {
+          "type": "string",
+          "description": "Gate identifier monitored"
+        },
+        "pressure": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "description": "Subjective crowd tension index"
+        },
+        "flowRate": {
+          "type": "integer",
+          "description": "People passing through gate per minute"
+        },
+        "congestionIndex": {
+          "type": "integer",
+          "description": "Value between 0 and 100"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Log timestamp"
+        }
+      },
+      "required": ["id", "stadiumId", "gateId", "pressure", "flowRate", "congestionIndex", "timestamp"]
+    },
+    "ParkingState": {
+      "title": "ParkingState",
+      "description": "Live status of stadium parking lots",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Parking lot identifier"
+        },
+        "stadiumId": {
+          "type": "string",
+          "description": "Stadium host identifier"
+        },
+        "lotName": {
+          "type": "string",
+          "description": "Assigned name of lot"
+        },
+        "occupancyPercentage": {
+          "type": "integer",
+          "description": "Percentage capacity used"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["available", "busy", "full"],
+          "description": "Capacity category"
+        },
+        "accessibilitySpotsFree": {
+          "type": "integer",
+          "description": "Number of free ADA parking slots"
+        }
+      },
+      "required": ["id", "stadiumId", "lotName", "occupancyPercentage", "status", "accessibilitySpotsFree"]
+    },
+    "SustainabilityMetric": {
+      "title": "SustainabilityMetric",
+      "description": "Environmental impact numbers",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Metrics run identifier"
+        },
+        "stadiumId": {
+          "type": "string",
+          "description": "Stadium identifier"
+        },
+        "wasteRecycledKg": {
+          "type": "number",
+          "description": "Amount of trash composted or recycled in kg"
+        },
+        "energySavedKwh": {
+          "type": "number",
+          "description": "Estimated energy reduction in KWh"
+        },
+        "waterSavedLitres": {
+          "type": "number",
+          "description": "Estimated volume of water saved"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp of capture"
+        }
+      },
+      "required": ["id", "stadiumId", "wasteRecycledKg", "energySavedKwh", "waterSavedLitres", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Registered profile registry"
+    },
+    "stadiums/{stadiumId}": {
+      "schema": "Stadium",
+      "description": "Stadium venues catalog"
+    },
+    "matches/{matchId}": {
+      "schema": "Match",
+      "description": "Scheduled fixtures list"
+    },
+    "volunteers/{taskId}": {
+      "schema": "VolunteerTask",
+      "description": "Duty assignments database"
+    },
+    "alerts/{alertId}": {
+      "schema": "AlertIncident",
+      "description": "Emergency hazards and incident tracking"
+    },
+    "transport/{routeId}": {
+      "schema": "TransitSchedule",
+      "description": "Transit options wait details"
+    },
+    "announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Broadcast board alerts"
+    },
+    "crowd/{metricId}": {
+      "schema": "CrowdMetrics",
+      "description": "Gate sensor and crowd density index"
+    },
+    "parking/{lotId}": {
+      "schema": "ParkingState",
+      "description": "Parking spaces tracker"
+    },
+    "sustainability/{metricId}": {
+      "schema": "SustainabilityMetric",
+      "description": "Eco green footprint scoreboard"
+    }
+  }
+}
