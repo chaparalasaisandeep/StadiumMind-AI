@@ -26,7 +26,13 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
   });
 
   it("addDocData saves to collection and returns auto-assigned ID", async () => {
-    const newId = await addDocData("volunteers", { taskName: "Clean Concourse" });
+    const newId = await addDocData("volunteers", {
+      title: "Clean Concourse",
+      description: "Clean up concourse section",
+      assignedTo: "Staff",
+      section: "Concourse",
+      status: "pending"
+    });
     expect(newId).toBe("new-id");
     expect(firestoreModule.addDoc).toHaveBeenCalled();
   });
@@ -69,14 +75,29 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
 
     // 4. volunteers
     expect(await firestoreServices.volunteers.get("v1")).not.toBeNull();
-    await firestoreServices.volunteers.save("v1", { taskName: "Help" });
-    expect(await firestoreServices.volunteers.add({ taskName: "Help" })).toBe("new-id");
+    await firestoreServices.volunteers.save("v1", { title: "Help" });
+    expect(await firestoreServices.volunteers.add({
+      title: "Help",
+      description: "Assist with crowd management",
+      assignedTo: "Volunteer-1",
+      section: "Gate 3",
+      status: "pending"
+    })).toBe("new-id");
     expect(await firestoreServices.volunteers.list()).toHaveLength(2);
 
     // 5. alerts
     expect(await firestoreServices.alerts.get("a1")).not.toBeNull();
     await firestoreServices.alerts.save("a1", { title: "Alert" });
-    expect(await firestoreServices.alerts.add({ title: "Alert" })).toBe("new-id");
+    expect(await firestoreServices.alerts.add({
+      title: "Alert",
+      type: "medical",
+      severity: "high",
+      location: "East Stand",
+      lat: 34.01,
+      lng: -118.01,
+      status: "reported",
+      timestamp: "12:00"
+    })).toBe("new-id");
     expect(await firestoreServices.alerts.list()).toHaveLength(2);
 
     // 6. transport
@@ -86,8 +107,15 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
 
     // 7. announcements
     expect(await firestoreServices.announcements.get("an1")).not.toBeNull();
-    await firestoreServices.announcements.save("an1", { message: "Test" });
-    expect(await firestoreServices.announcements.add({ message: "Test" })).toBe("new-id");
+    await firestoreServices.announcements.save("an1", { content: "Test" });
+    expect(await firestoreServices.announcements.add({
+      stadiumId: "sofi",
+      title: "Announcement Title",
+      content: "Test",
+      category: "general",
+      audience: "all",
+      timestamp: "12:00"
+    })).toBe("new-id");
     expect(await firestoreServices.announcements.list()).toHaveLength(2);
 
     // 8. crowd
@@ -102,7 +130,13 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
 
     // 10. sustainability
     expect(await firestoreServices.sustainability.get("su1")).not.toBeNull();
-    await firestoreServices.sustainability.save("su1", { carbonOffsetScore: 85 });
+    await firestoreServices.sustainability.save("su1", {
+      wasteRecycledKg: 100,
+      energySavedKwh: 85,
+      waterSavedLitres: 200,
+      timestamp: "12:00",
+      stadiumId: "sofi"
+    });
     expect(await firestoreServices.sustainability.list()).toHaveLength(1);
   });
 
