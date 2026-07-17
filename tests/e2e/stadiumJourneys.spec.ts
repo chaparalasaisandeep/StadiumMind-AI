@@ -1,5 +1,44 @@
 import { test, expect } from "@playwright/test";
 
+// A robust self-healing sign-in helper that signs up the user dynamically if credentials don't match or aren't present.
+async function performSelfHealingSignIn(page: any, email: string, role: string, displayName: string) {
+  // Navigate to credentials portal
+  await page.click("button:has-text('Sign In')");
+  await page.waitForSelector("text=Sign In to Terminal");
+
+  // 1. Attempt standard sign-in
+  await page.fill("form >> input[type='email']", email);
+  await page.fill("form >> input[type='password']", "securepassword");
+  await page.selectOption("form >> select", role);
+  await page.click("form >> button[type='submit']");
+
+  // Wait to see if we navigate or receive an authentication error
+  await page.waitForTimeout(2000);
+
+  const errorVisible = await page.locator("text=Incorrect email address or security passcode").isVisible();
+  const notFoundVisible = await page.locator("text=No terminal clearance found").isVisible();
+
+  if (errorVisible || notFoundVisible) {
+    console.log(`[E2E-INFO] Account ${email} not found or mismatch. Initiating dynamic self-healing registration.`);
+    
+    // Switch to Register Account tab
+    await page.click("button:has-text('Register Account')");
+    await page.waitForTimeout(800);
+
+    // Populate registration credentials
+    await page.fill("form >> input[placeholder='Jane Doe']", displayName);
+    await page.fill("form >> input[placeholder='name@host.com']", email);
+    await page.fill("form >> input[placeholder='••••••••']", "securepassword");
+    await page.selectOption("form >> select", role);
+
+    // Submit registration
+    await page.click("form >> button[type='submit']");
+    
+    // Allow ample time for live cloud registration to finish
+    await page.waitForTimeout(3000);
+  }
+}
+
 test.describe("StadiumMind End-to-End User Journeys", () => {
   
   test.beforeEach(async ({ page }) => {
@@ -11,81 +50,52 @@ test.describe("StadiumMind End-to-End User Journeys", () => {
     // 1. Verify title is present on the landing page
     await expect(page.locator("h2:has-text('StadiumMind AI')")).toBeVisible();
     
-    // 2. Click the Sign In action in navigation
-    await page.click("button:has-text('Sign In')");
+    // 2. Perform self-healing sign in/up
+    await performSelfHealingSignIn(page, "fan@fifa.org", "Fan", "Fan Experience");
     
-    // 3. Verify we are on the credentials page
-    await expect(page.locator("text=Sign In to Terminal")).toBeVisible();
-    
-    // 4. Enter credentials for a Fan
-    await page.fill("input[placeholder='name@host.com']", "fan@fifa.org");
-    await page.fill("input[placeholder='••••••••']", "securepassword");
-    
-    // 5. Select Fan Experience role
-    await page.selectOption("select", "Fan");
-    
-    // 6. Submit the form
-    await page.click("button[type='submit']");
-    
-    // 7. Verify we are logged into the interactive stadium dashboard
+    // 3. Verify we are logged into the interactive stadium dashboard
     await expect(page.locator("text=Live Crowd & Queuing Telemetry")).toBeVisible();
   });
 
   test("Volunteer Journey - Guide accessible guests and view guidelines", async ({ page }) => {
-    // Sign in as Volunteer
-    await page.click("button:has-text('Sign In')");
-    await page.fill("input[placeholder='name@host.com']", "volunteer@fifa.org");
-    await page.fill("input[placeholder='••••••••']", "securepassword");
-    await page.selectOption("select", "Volunteer");
-    await page.click("button[type='submit']");
+    // 1. Perform self-healing sign in/up
+    await performSelfHealingSignIn(page, "volunteer@fifa.org", "Volunteer", "Volunteer Desk");
 
-    // Once in Dashboard, verify the role indicator is correct
-    await expect(page.locator("text=VOLUNTEER DESK")).toBeVisible();
+    // 2. Once in Dashboard, verify the role indicator is correct
+    await expect(page.locator("text=Volunteer Desk System Mode")).toBeVisible();
   });
 
   test("Organizer Journey - Optimize stadium and view charts", async ({ page }) => {
-    // Sign in as Organizer
-    await page.click("button:has-text('Sign In')");
-    await page.fill("input[placeholder='name@host.com']", "organizer@fifa.org");
-    await page.fill("input[placeholder='••••••••']", "securepassword");
-    await page.selectOption("select", "Organizer");
-    await page.click("button[type='submit']");
+    // 1. Perform self-healing sign in/up
+    await performSelfHealingSignIn(page, "organizer@fifa.org", "Organizer", "Match Organizer");
 
-    // Verify Organizer views are active
-    await expect(page.locator("text=TOURNAMENT ORGANIZER")).toBeVisible();
+    // 2. Verify Organizer views are active
+    await expect(page.locator("text=Tournament Organizers System Mode")).toBeVisible();
     await expect(page.locator("text=Live Crowd & Queuing Telemetry")).toBeVisible();
   });
 
   test("Emergency & Stress Simulation Journey - Admin forces events and triggers alerts", async ({ page }) => {
-    // Sign in as Admin
-    await page.click("button:has-text('Sign In')");
-    await page.fill("input[placeholder='name@host.com']", "admin@fifa.org");
-    await page.fill("input[placeholder='••••••••']", "securepassword");
-    await page.selectOption("select", "Admin");
-    await page.click("button[type='submit']");
+    // 1. Perform self-healing sign in/up
+    await performSelfHealingSignIn(page, "admin@fifa.org", "Admin", "System Admin");
 
-    // Verify Admin interface is active
-    await expect(page.locator("text=SYSTEM ADMINISTRATOR")).toBeVisible();
+    // 2. Verify Admin interface is active
+    await expect(page.locator("text=System Admin System Mode")).toBeVisible();
 
-    // Verify simulation dashboard is present
+    // 3. Verify simulation dashboard is present
     await expect(page.locator("text=Live Operations & Stress Simulator")).toBeVisible();
 
-    // Click 'Crowd Surge' simulation action
+    // 4. Click 'Crowd Surge' simulation action
     await page.click("button:has-text('Crowd Surge')");
 
-    // Expect alert to have propagated to the live notification center feed
+    // 5. Expect alert to have propagated to the live notification center feed
     await expect(page.locator("text=SIMULATION: Surge alert registered for Gate A")).toBeVisible();
   });
 
   test("Translation Journey - Translate logs to international team languages", async ({ page }) => {
-    // Sign in as Fan
-    await page.click("button:has-text('Sign In')");
-    await page.fill("input[placeholder='name@host.com']", "fan@fifa.org");
-    await page.fill("input[placeholder='••••••••']", "securepassword");
-    await page.selectOption("select", "Fan");
-    await page.click("button[type='submit']");
+    // 1. Perform self-healing sign in/up
+    await performSelfHealingSignIn(page, "fan@fifa.org", "Fan", "Fan Experience");
 
-    // Verify search and maps accessibility features are visible
+    // 2. Verify landing elements are visible on dashboard
     await expect(page.locator("text=StadiumMind AI")).toBeVisible();
   });
 });

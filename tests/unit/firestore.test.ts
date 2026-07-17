@@ -75,7 +75,13 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
 
     // 4. volunteers
     expect(await firestoreServices.volunteers.get("v1")).not.toBeNull();
-    await firestoreServices.volunteers.save("v1", { title: "Help" });
+    await firestoreServices.volunteers.save("v1", {
+      title: "Help Support Seat Entry",
+      description: "Help spectators navigate to their seats",
+      assignedTo: "Volunteer-5",
+      section: "Lower Bowl 102",
+      status: "pending"
+    });
     expect(await firestoreServices.volunteers.add({
       title: "Help",
       description: "Assist with crowd management",
@@ -87,7 +93,16 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
 
     // 5. alerts
     expect(await firestoreServices.alerts.get("a1")).not.toBeNull();
-    await firestoreServices.alerts.save("a1", { title: "Alert" });
+    await firestoreServices.alerts.save("a1", {
+      title: "Security Incident Alert",
+      type: "security",
+      severity: "high",
+      location: "Gate B Ingress Corridor",
+      lat: 34.0125,
+      lng: -118.0152,
+      status: "reported",
+      timestamp: "15:45"
+    });
     expect(await firestoreServices.alerts.add({
       title: "Alert",
       type: "medical",
@@ -107,7 +122,14 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
 
     // 7. announcements
     expect(await firestoreServices.announcements.get("an1")).not.toBeNull();
-    await firestoreServices.announcements.save("an1", { content: "Test" });
+    await firestoreServices.announcements.save("an1", {
+      stadiumId: "metlife",
+      title: "Transit Advisory Announcement",
+      content: "Line 4 Shuttle Buses experiencing minor backlog.",
+      category: "transit",
+      audience: "all",
+      timestamp: "18:15"
+    });
     expect(await firestoreServices.announcements.add({
       stadiumId: "sofi",
       title: "Announcement Title",
@@ -167,6 +189,13 @@ describe("Firestore Service Helpers & CRUD Tests - Comprehensive Coverage", () =
     // 6. deleteDocData error path
     vi.spyOn(firestoreModule, "deleteDoc").mockRejectedValueOnce(new Error("Delete Error"));
     await expect(deleteDocData("stadiums", "err-1")).rejects.toThrow("Delete Error");
+
+    // 7. Structured Permission Error path
+    const permissionError = new Error("Missing or insufficient permissions");
+    // @ts-ignore
+    permissionError.code = "permission-denied";
+    vi.spyOn(firestoreModule, "getDoc").mockRejectedValueOnce(permissionError);
+    await expect(getDocData("stadiums", "err-permission")).rejects.toThrow("stadiums/err-permission");
 
     consoleErrorSpy.mockRestore();
   });

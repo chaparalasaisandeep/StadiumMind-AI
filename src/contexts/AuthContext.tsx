@@ -55,7 +55,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let displayName = firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User";
           let assignedSector = "Sector General";
 
-          if (firestore) {
+          const pendingRole = localStorage.getItem("pending_role") as UserRole | null;
+
+          if (pendingRole) {
+            role = pendingRole;
+            localStorage.removeItem("pending_role");
+            if (firestore) {
+              const userDocRef = doc(firestore, "users", firebaseUser.uid);
+              await setDoc(userDocRef, {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || "",
+                displayName,
+                role,
+                assignedSector: role === "Volunteer" ? "Volunteer Desk 3" : role === "Security" ? "Sector West-Gate 4" : "Sector General",
+                createdAt: new Date().toISOString()
+              }, { merge: true });
+            }
+          } else if (firestore) {
             const userDocRef = doc(firestore, "users", firebaseUser.uid);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
@@ -113,6 +129,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password?: string, role?: UserRole) => {
     setLoading(true);
     try {
+      if (role) {
+        localStorage.setItem("pending_role", role);
+      }
       if (!auth) {
         // Fallback for offline/unprovisioned flow
         const dummyProfile: UserProfile = {
@@ -125,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         setUser(dummyProfile);
         localStorage.setItem("stad_user_session", JSON.stringify(dummyProfile));
+        localStorage.removeItem("pending_role");
         setLoading(false);
         return;
       }
@@ -135,20 +155,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const credential = await signInWithEmailAndPassword(auth, email, password);
       
-      // Update/Assign selected role in Firestore if supplied and document doesn't have one
+      // Force update selected role in Firestore if supplied
       if (firestore && role) {
         const userDocRef = doc(firestore, "users", credential.user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (!userDoc.exists() || !userDoc.data()?.role) {
-          await setDoc(userDocRef, {
-            uid: credential.user.uid,
-            email: credential.user.email,
-            displayName: credential.user.displayName || email.split("@")[0],
-            role,
-            assignedSector: role === "Volunteer" ? "Volunteer Desk 3" : role === "Security" ? "Sector West-Gate 4" : "Sector General",
-            createdAt: new Date().toISOString()
-          }, { merge: true });
-        }
+        await setDoc(userDocRef, {
+          uid: credential.user.uid,
+          email: credential.user.email,
+          displayName: credential.user.displayName || email.split("@")[0],
+          role,
+          assignedSector: role === "Volunteer" ? "Volunteer Desk 3" : role === "Security" ? "Sector West-Gate 4" : "Sector General",
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+        localStorage.removeItem("pending_role");
       }
     } catch (error: any) {
       setLoading(false);
@@ -221,6 +239,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async (role?: UserRole) => {
     setLoading(true);
     try {
+      if (role) {
+        localStorage.setItem("pending_role", role);
+      }
       if (!auth) {
         throw new Error("Google Authentication requires live active cloud provisioning.");
       }

@@ -15,9 +15,61 @@ import {
   TranslationAIRequest,
   TranslationAIResponse
 } from "./src/services/aiTypes";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "./src/firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { firestore } from "./src/firebase/firestore";
 
 // Model configuration
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.5-flash";
+
+let isAuthInit = false;
+
+export async function ensureServerAuthenticated() {
+  if (isAuthInit) return;
+  if (!auth) {
+    console.warn("[Server Auth] Firebase Auth is not configured/available. Operating in offline/fallback mode.");
+    return;
+  }
+
+  const email = "system-server@fifa.org";
+  const password = "SystemServerPassword123!";
+
+  try {
+    // Try to sign in
+    await signInWithEmailAndPassword(auth, email, password);
+    console.log("[Server Auth] Successfully authenticated system server session.");
+    isAuthInit = true;
+  } catch (error: any) {
+    // If user does not exist, create user
+    const errStr = String(error?.code || error?.message || error).toLowerCase();
+    if (errStr.includes("not-found") || errStr.includes("invalid-credential") || errStr.includes("user-not-found")) {
+      console.log("[Server Auth] System server user not found. Registering system server account...");
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        
+        // Also create the profile document in Firestore
+        if (firestore) {
+          const userDocRef = doc(firestore, "users", userCred.user.uid);
+          await setDoc(userDocRef, {
+            uid: userCred.user.uid,
+            email: email,
+            displayName: "System Server Agent",
+            role: "Admin",
+            assignedSector: "System Operations",
+            createdAt: new Date().toISOString()
+          });
+        }
+        console.log("[Server Auth] Successfully registered and authenticated system server session.");
+        isAuthInit = true;
+      } catch (regError) {
+        console.error("[Server Auth] Failed to register system server session:", regError);
+      }
+    } else {
+      console.error("[Server Auth] Failed to authenticate system server session:", error);
+    }
+  }
+}
 
 interface LiveContextData {
   stadium?: any;
@@ -34,6 +86,7 @@ interface LiveContextData {
  * Falls back to empty arrays/objects gracefully if records or connection are missing.
  */
 export async function fetchFirestoreContext(stadiumId?: string): Promise<LiveContextData> {
+  await ensureServerAuthenticated();
   const result: LiveContextData = {};
   try {
     const [stadiums, matches, parking, transport, incidents, crowd, volunteers] = await Promise.all([

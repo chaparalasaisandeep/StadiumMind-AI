@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, Mock } from "vitest";
+import { describe, it, expect, vi, Mock, beforeEach, afterEach } from "vitest";
 import { callAIOrchestrator } from "../../src/services/aiOrchestrator";
 import { fanAIService } from "../../src/services/fanAI";
 import { transportAIService } from "../../src/services/transportAI";
@@ -8,6 +8,19 @@ import { organizerAIService } from "../../src/services/organizerAI";
 import { translationAIService } from "../../src/services/translationAI";
 
 describe("AI Orchestrator & Multi-Modal Agent Services Tests", () => {
+  let consoleErrorSpy: any;
+  let consoleWarnSpy: any;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
   it("callAIOrchestrator successfully calls API", async () => {
     const mockJson = vi.fn().mockResolvedValue({
       success: true,

@@ -12,6 +12,7 @@ import {
   QueryConstraint
 } from "firebase/firestore";
 import { firebaseApp } from "./config";
+import { auth } from "./auth";
 import { 
   UserProfile, 
   Stadium, 
@@ -24,6 +25,60 @@ import {
   ParkingState, 
   SustainabilityMetric 
 } from "../types";
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+function isPermissionError(error: any): boolean {
+  if (!error) return false;
+  const errMsg = String(error.message || error).toLowerCase();
+  const code = String(error.code || "").toLowerCase();
+  return code === "permission-denied" || errMsg.includes("permission") || errMsg.includes("insufficient");
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid || null,
+      email: auth?.currentUser?.email || null,
+      emailVerified: auth?.currentUser?.emailVerified || null,
+      isAnonymous: auth?.currentUser?.isAnonymous || null,
+      tenantId: auth?.currentUser?.tenantId || null,
+      providerInfo: auth?.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 let firestore: ReturnType<typeof getFirestore>;
 try {
@@ -51,7 +106,11 @@ export async function getDocData<T = DocumentData>(collectionName: string, docId
       return { id: docSnap.id, ...docSnap.data() } as T;
     }
   } catch (error) {
-    console.error(`Error fetching document from ${collectionName}/${docId}:`, error);
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.GET, `${collectionName}/${docId}`);
+    } else {
+      console.error(`Error fetching document from ${collectionName}/${docId}:`, error);
+    }
   }
   return null;
 }
@@ -67,8 +126,12 @@ export async function setDocData<T = DocumentData>(
     const docRef = doc(firestore, collectionName, docId);
     await setDoc(docRef, data, { merge });
   } catch (error) {
-    console.error(`Error saving document to ${collectionName}/${docId}:`, error);
-    throw error;
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, `${collectionName}/${docId}`);
+    } else {
+      console.error(`Error saving document to ${collectionName}/${docId}:`, error);
+      throw error;
+    }
   }
 }
 
@@ -79,8 +142,12 @@ export async function addDocData<T = DocumentData>(collectionName: string, data:
     const docRef = await addDoc(colRef, data as DocumentData);
     return docRef.id;
   } catch (error) {
-    console.error(`Error adding document to collection ${collectionName}:`, error);
-    throw error;
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, collectionName);
+    } else {
+      console.error(`Error adding document to collection ${collectionName}:`, error);
+      throw error;
+    }
   }
 }
 
@@ -95,9 +162,13 @@ export async function getCollectionDocs<T = DocumentData>(collectionName: string
     });
     return items;
   } catch (error) {
-    console.error(`Error retrieving collection ${collectionName}:`, error);
-    return [];
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.LIST, collectionName);
+    } else {
+      console.error(`Error retrieving collection ${collectionName}:`, error);
+    }
   }
+  return [];
 }
 
 export async function queryCollectionDocs<T = DocumentData>(
@@ -115,9 +186,13 @@ export async function queryCollectionDocs<T = DocumentData>(
     });
     return items;
   } catch (error) {
-    console.error(`Error querying collection ${collectionName}:`, error);
-    return [];
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.LIST, collectionName);
+    } else {
+      console.error(`Error querying collection ${collectionName}:`, error);
+    }
   }
+  return [];
 }
 
 export async function deleteDocData(collectionName: string, docId: string): Promise<void> {
@@ -126,8 +201,12 @@ export async function deleteDocData(collectionName: string, docId: string): Prom
     const docRef = doc(firestore, collectionName, docId);
     await deleteDoc(docRef);
   } catch (error) {
-    console.error(`Error deleting document ${collectionName}/${docId}:`, error);
-    throw error;
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${docId}`);
+    } else {
+      console.error(`Error deleting document ${collectionName}/${docId}:`, error);
+      throw error;
+    }
   }
 }
 
