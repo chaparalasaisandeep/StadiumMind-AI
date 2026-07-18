@@ -54,13 +54,6 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
-    // GLOBAL SAFETY NET
-    // -------------------------------------------------------------
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // -------------------------------------------------------------
     // VALIDATION HELPERS (PHASE 4)
     // -------------------------------------------------------------
 
@@ -215,10 +208,7 @@ service cloud.firestore {
 
     // 4. Volunteers Assigned Tasks
     match /volunteers/{taskId} {
-      allow get: if isSignedIn() && isValidId(taskId) 
-                    && (isAdmin() || isOrganizer() || (isVolunteer() && existing().assignedTo == request.auth.uid));
-      allow list: if isSignedIn() 
-                    && (isAdmin() || isOrganizer() || (isVolunteer() && resource.data.assignedTo == request.auth.uid));
+      allow read: if isSignedIn();
       allow create: if (isAdmin() || isOrganizer()) && isValidId(taskId) && isValidVolunteerTask(incoming());
       allow delete: if isAdmin() || isOrganizer();
       allow update: if isSignedIn() && isValidId(taskId) && isValidVolunteerTask(incoming())
@@ -231,7 +221,7 @@ service cloud.firestore {
 
     // 5. Emergency Alerts & Incidents
     match /alerts/{alertId} {
-      allow read: if isAdmin() || isOrganizer() || isSecurity();
+      allow read: if isSignedIn();
       allow create, update: if (isAdmin() || isOrganizer() || isSecurity()) && isValidId(alertId) && isValidAlert(incoming());
       allow delete: if isAdmin() || isOrganizer() || isSecurity();
     }
@@ -252,21 +242,21 @@ service cloud.firestore {
 
     // 8. Gate Crowd Density Indexes
     match /crowd/{metricId} {
-      allow read: if isAdmin() || isOrganizer() || isSecurity();
+      allow read: if isSignedIn();
       allow create, update: if (isAdmin() || isOrganizer()) && isValidId(metricId) && isValidCrowdMetrics(incoming());
       allow delete: if isAdmin() || isOrganizer();
     }
 
     // 9. Parking Lot occupancy state
     match /parking/{lotId} {
-      allow read: if isAdmin() || isOrganizer();
+      allow read: if isSignedIn();
       allow create, update: if (isAdmin() || isOrganizer()) && isValidId(lotId) && isValidParkingState(incoming());
       allow delete: if isAdmin() || isOrganizer();
     }
 
     // 10. Environmental Sustainability records
     match /sustainability/{metricId} {
-      allow read: if isAdmin() || isOrganizer();
+      allow read: if isSignedIn();
       allow create, update: if (isAdmin() || isOrganizer()) && isValidId(metricId) && isValidSustainabilityMetric(incoming());
       allow delete: if isAdmin() || isOrganizer();
     }

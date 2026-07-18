@@ -18,7 +18,14 @@ interface MarkerLayerProps {
   renderPopupContent?: (marker: MapMarkerData) => React.ReactNode;
 }
 
+const iconCache: Record<string, L.DivIcon> = {};
+
 const createCustomIcon = (type: "gate" | "concession" | "incident", severity?: string) => {
+  const cacheKey = `${type}-${severity || "none"}`;
+  if (iconCache[cacheKey]) {
+    return iconCache[cacheKey];
+  }
+
   let colorClass = "bg-[#6EB8E1]";
   let glyph = "G";
 
@@ -30,7 +37,7 @@ const createCustomIcon = (type: "gate" | "concession" | "incident", severity?: s
     glyph = "!";
   }
 
-  return L.divIcon({
+  const icon = L.divIcon({
     html: `
       <div class="relative flex items-center justify-center w-7 h-7 rounded-full border-2 border-slate-950 shadow-md text-white font-bold text-xs ${colorClass}">
         ${glyph}
@@ -42,6 +49,9 @@ const createCustomIcon = (type: "gate" | "concession" | "incident", severity?: s
     iconAnchor: [14, 28],
     popupAnchor: [0, -28],
   });
+
+  iconCache[cacheKey] = icon;
+  return icon;
 };
 
 export default function MarkerLayer({ markers, onMarkerClick, renderPopupContent }: MarkerLayerProps) {

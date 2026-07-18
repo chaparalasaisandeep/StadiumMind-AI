@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -6,7 +6,9 @@ import {
   onAuthStateChanged,
   signInWithPopup,
   GoogleAuthProvider,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  setPersistence,
+  browserLocalPersistence
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { UserRole, UserProfile } from "../types";
@@ -32,101 +34,110 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Monitor auth state changes with Firebase
   useEffect(() => {
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+
     if (!auth) {
       // Fallback if Firebase auth is not configured / initialized
-      const cached = localStorage.getItem("stad_user_session");
-      if (cached) {
-        try {
-          setUser(JSON.parse(cached));
-        } catch (e) {
-          console.error("Fallback session load error", e);
-        }
-      }
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
-      if (firebaseUser) {
-        try {
-          // Fetch user profile role from Firestore
-          let role: UserRole = "Fan";
-          let displayName = firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User";
-          let assignedSector = "Sector General";
+    // Explicitly configure LOCAL persistence to ensure sessions are preserved
+    setPersistence(auth, browserLocalPersistence)
+      .catch((err) => {
+        console.error("Error setting Firebase Auth persistence:", err);
+      })
+      .finally(() => {
+        if (!active) return;
+        
+        unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+          if (!active) return;
+          
+          if (firebaseUser) {
+            setLoading(true);
+            try {
+              // Fetch user profile role from Firestore
+              let role: UserRole = "Fan";
+              let displayName = firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User";
+              let assignedSector = "Sector General";
 
-          const pendingRole = localStorage.getItem("pending_role") as UserRole | null;
+              const pendingRole = localStorage.getItem("pending_role") as UserRole | null;
 
-          if (pendingRole) {
-            role = pendingRole;
-            localStorage.removeItem("pending_role");
-            if (firestore) {
-              const userDocRef = doc(firestore, "users", firebaseUser.uid);
-              await setDoc(userDocRef, {
-                uid: firebaseUser.uid,
-                email: firebaseUser.email || "",
-                displayName,
-                role,
-                assignedSector: role === "Volunteer" ? "Volunteer Desk 3" : role === "Security" ? "Sector West-Gate 4" : "Sector General",
-                createdAt: new Date().toISOString()
-              }, { merge: true });
-            }
-          } else if (firestore) {
-            const userDocRef = doc(firestore, "users", firebaseUser.uid);
-            const userDoc = await getDoc(userDocRef);
-            if (userDoc.exists()) {
-              const data = userDoc.data();
-              if (data.role) role = data.role as UserRole;
-              if (data.displayName) displayName = data.displayName;
-              if (data.assignedSector) assignedSector = data.assignedSector;
-            } else {
-              // Create user document if it doesn't exist yet
-              const newProfile: UserProfile = {
+              if (pendingRole) {
+                role = pendingRole;
+                localStorage.removeItem("pending_role");
+                if (firestore) {
+                  const userDocRef = doc(firestore, "users", firebaseUser.uid);
+                  await setDoc(userDocRef, {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email || "",
+                    displayName,
+                    role,
+                    assignedSector: role === "Volunteer" ? "Volunteer Desk 3" : role === "Security" ? "Sector West-Gate 4" : "Sector General",
+                    createdAt: new Date().toISOString()
+                  }, { merge: true });
+                }
+              } else if (firestore) {
+                const userDocRef = doc(firestore, "users", firebaseUser.uid);
+                const userDoc = await getDoc(userDocRef);
+                if (userDoc.exists()) {
+                  const data = userDoc.data();
+                  if (data.role) role = data.role as UserRole;
+                  if (data.displayName) displayName = data.displayName;
+                  if (data.assignedSector) assignedSector = data.assignedSector;
+                } else {
+                  // Create user document if it doesn't exist yet
+                  const newProfile: UserProfile = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email || "",
+                    displayName,
+                    role,
+                    assignedSector,
+                    createdAt: new Date().toISOString()
+                  };
+                  await setDoc(userDocRef, newProfile);
+                }
+              }
+
+              const profile: UserProfile = {
                 uid: firebaseUser.uid,
                 email: firebaseUser.email || "",
                 displayName,
                 role,
                 assignedSector,
+                createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
+              };
+
+              setUser(profile);
+            } catch (err) {
+              console.error("Error synchronizing user profile from Firestore:", err);
+              // Safe baseline profile fallback
+              const baselineProfile: UserProfile = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || "",
+                displayName: firebaseUser.displayName || "Authorized User",
+                role: "Fan",
                 createdAt: new Date().toISOString()
               };
-              await setDoc(userDocRef, newProfile);
+              setUser(baselineProfile);
             }
+          } else {
+            setUser(null);
           }
+          setLoading(false);
+        });
+      });
 
-          const profile: UserProfile = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || "",
-            displayName,
-            role,
-            assignedSector,
-            createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
-          };
-
-          setUser(profile);
-          localStorage.setItem("stad_user_session", JSON.stringify(profile));
-        } catch (err) {
-          console.error("Error synchronizing user profile from Firestore:", err);
-          // Safe baseline profile fallback
-          const baselineProfile: UserProfile = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || "",
-            displayName: firebaseUser.displayName || "Authorized User",
-            role: "Fan",
-            createdAt: new Date().toISOString()
-          };
-          setUser(baselineProfile);
-        }
-      } else {
-        setUser(null);
-        localStorage.removeItem("stad_user_session");
+    return () => {
+      active = false;
+      if (unsubscribe) {
+        unsubscribe();
       }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    };
   }, []);
 
-  const login = async (email: string, password?: string, role?: UserRole) => {
+  const login = useCallback(async (email: string, password?: string, role?: UserRole) => {
     setLoading(true);
     try {
       if (role) {
@@ -143,7 +154,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: new Date().toISOString()
         };
         setUser(dummyProfile);
-        localStorage.setItem("stad_user_session", JSON.stringify(dummyProfile));
         localStorage.removeItem("pending_role");
         setLoading(false);
         return;
@@ -182,9 +192,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw new Error(friendlyMessage);
     }
-  };
+  }, []);
 
-  const signup = async (email: string, name: string, password?: string, role?: UserRole) => {
+  const signup = useCallback(async (email: string, name: string, password?: string, role?: UserRole) => {
     setLoading(true);
     try {
       if (!auth) {
@@ -198,7 +208,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: new Date().toISOString()
         };
         setUser(dummyProfile);
-        localStorage.setItem("stad_user_session", JSON.stringify(dummyProfile));
         setLoading(false);
         return;
       }
@@ -234,9 +243,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw new Error(friendlyMessage);
     }
-  };
+  }, []);
 
-  const loginWithGoogle = async (role?: UserRole) => {
+  const loginWithGoogle = useCallback(async (role?: UserRole) => {
     setLoading(true);
     try {
       if (role) {
@@ -267,9 +276,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       throw new Error(error.message || "Google single sign-on failed.");
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setLoading(true);
     try {
       if (auth) {
@@ -279,11 +288,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Firebase logout warning", err);
     }
     setUser(null);
-    localStorage.removeItem("stad_user_session");
     setLoading(false);
-  };
+  }, []);
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = useCallback(async (email: string) => {
     if (!auth) {
       throw new Error("Offline reset: Safe bypass activated.");
     }
@@ -292,13 +300,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       throw new Error(error.message || "Failed to transmit recovery credentials.");
     }
-  };
+  }, []);
 
-  const switchRole = async (newRole: UserRole) => {
+  const switchRole = useCallback(async (newRole: UserRole) => {
     if (user) {
       const updated = { ...user, role: newRole };
       setUser(updated);
-      localStorage.setItem("stad_user_session", JSON.stringify(updated));
 
       // Persist the updated role in Firestore
       if (auth && firestore && auth.currentUser) {
@@ -314,19 +321,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  };
+  }, [user]);
+
+  const value = useMemo(() => ({
+    user,
+    loading,
+    login,
+    signup,
+    loginWithGoogle,
+    logout,
+    resetPassword,
+    switchRole
+  }), [user, loading, login, signup, loginWithGoogle, logout, resetPassword, switchRole]);
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      loading, 
-      login, 
-      signup, 
-      loginWithGoogle, 
-      logout, 
-      resetPassword, 
-      switchRole 
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

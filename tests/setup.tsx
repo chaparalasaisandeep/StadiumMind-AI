@@ -22,6 +22,8 @@ vi.mock("firebase/auth", () => ({
     get currentUser() { return currentFirebaseUser; }
   })),
   connectAuthEmulator: vi.fn(),
+  setPersistence: vi.fn(() => Promise.resolve()),
+  browserLocalPersistence: "local",
   signInWithEmailAndPassword: vi.fn((auth, email, password) => {
     currentFirebaseUser = { 
       uid: "user-123", 
@@ -165,6 +167,7 @@ vi.mock("firebase/firestore", () => {
       delete mockDatabase[docRef];
       return Promise.resolve();
     }),
+    enableIndexedDbPersistence: vi.fn(() => Promise.resolve()),
   };
 });
 

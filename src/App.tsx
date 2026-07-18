@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -28,8 +28,21 @@ function PremiumSuspenseLoader() {
 }
 
 function RootNavigationRouter() {
+  const { user, loading } = useAuth();
+  
+  // Start on landing by default; the loading spinner blocks rendering until Auth resolves
   const [route, setRoute] = useState<"landing" | "auth" | "dashboard">("landing");
-  const { user } = useAuth();
+
+  // Automatic session synchronization for optimized startup speed and persistence
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        setRoute("dashboard");
+      } else {
+        setRoute("landing");
+      }
+    }
+  }, [user, loading]);
 
   const handleGetStarted = () => {
     if (user) {
@@ -46,6 +59,11 @@ function RootNavigationRouter() {
   const handleLogoutSuccess = () => {
     setRoute("landing");
   };
+
+  // Block route rendering and wait for Firebase Auth to finish initializing
+  if (loading) {
+    return <PremiumSuspenseLoader />;
+  }
 
   return (
     <div className="bg-[#020617] min-h-screen text-slate-100 overflow-hidden">

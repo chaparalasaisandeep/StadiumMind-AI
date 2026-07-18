@@ -1,18 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { UserRole, StadiumState, StadiumLocation, SustainabilityMetric, VolunteerTask, AppNotification } from "../types";
 import { STADIUMS, INITIAL_STADIUM_STATE, DEFAULT_VOLUNTEER_TASKS } from "../constants";
 import RoleSelector from "../components/RoleSelector";
 import AICommandCenter from "../components/AICommandCenter";
 import AIRecommendationsPanel from "../components/AIRecommendationsPanel";
-import StadiumMap from "../components/StadiumMap";
 import OperationalMetrics from "../components/OperationalMetrics";
 import EmergencyIncidentLogger from "../components/EmergencyIncidentLogger";
-import AccessibilitySuite from "../components/AccessibilitySuite";
 import NotificationCenter from "../components/NotificationCenter";
 import OperationsSimulator from "../components/OperationsSimulator";
-import SensorTelemetryPanel from "../components/SensorTelemetryPanel";
-import LogisticsGuardsPanel from "../components/LogisticsGuardsPanel";
+import { Skeleton, SkeletonCard } from "../components/ui/Skeleton";
+
+// Route sub-panels loaded lazily to optimize bundle size and TTI
+const StadiumMap = lazy(() => import("../components/StadiumMap"));
+const AccessibilitySuite = lazy(() => import("../components/AccessibilitySuite"));
+const SensorTelemetryPanel = lazy(() => import("../components/SensorTelemetryPanel"));
+const LogisticsGuardsPanel = lazy(() => import("../components/LogisticsGuardsPanel"));
+
 import { firestoreServices } from "../firebase/firestore";
 import { 
   Building2, 
@@ -37,6 +41,9 @@ import {
   Droplet,
   RefreshCw
 } from "lucide-react";
+
+// Module-level lock to prevent concurrent seeding race conditions across multiple components or hooks
+let isSeedingActive = false;
 
 interface DashboardPageProps {
   onLogout: () => void;
@@ -112,6 +119,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   // Seeding helper to pre-fill the database if it is empty
   const seedInitialData = async () => {
+    if (isSeedingActive) {
+      console.log("Seeding already in progress, skipping concurrent duplicate attempt.");
+      return;
+    }
+    isSeedingActive = true;
     try {
       console.log("Seeding initial data into Firestore...");
       const seedPromises: Promise<any>[] = [];
@@ -211,6 +223,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       console.log("Successfully completed seeding initial Firestore records!");
     } catch (err) {
       console.error("Failed to seed initial data to Firestore. Ensure internet connection is stable:", err);
+    } finally {
+      isSeedingActive = false;
     }
   };
 
@@ -778,11 +792,23 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                     </div>
                   </div>
 
-                  <StadiumMap 
-                    stadium={selectedStadium}
-                    stadiumState={stadiumState}
-                    onSelectIncident={handleDispatchIncident}
-                  />
+                  <Suspense fallback={
+                    <div className="h-[450px] w-full flex flex-col gap-4 p-4 bg-slate-900/30 border border-slate-800 rounded-xl">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-1/3 bg-slate-800" />
+                        <Skeleton className="h-3 w-2/3 bg-slate-800" />
+                      </div>
+                      <div className="flex-1 w-full bg-slate-850/50 rounded-lg animate-pulse flex items-center justify-center">
+                        <span className="text-xs text-slate-500 font-mono">Loading Perimeter OSM Map...</span>
+                      </div>
+                    </div>
+                  }>
+                    <StadiumMap 
+                      stadium={selectedStadium}
+                      stadiumState={stadiumState}
+                      onSelectIncident={handleDispatchIncident}
+                    />
+                  </Suspense>
                 </div>
 
                 {/* Specific Sub Panels based on Role */}
@@ -813,7 +839,9 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                 )}
 
                 {currentRole === "Accessibility" && (
-                  <AccessibilitySuite stadiumName={selectedStadium.name} />
+                  <Suspense fallback={<SkeletonCard />}>
+                    <AccessibilitySuite stadiumName={selectedStadium.name} />
+                  </Suspense>
                 )}
 
                 {currentRole === "Transport" && (
@@ -944,17 +972,21 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           )}
 
           {activeConsole === "telemetry" && (
-            <SensorTelemetryPanel 
-              stadiumName={selectedStadium.name}
-              onNewNotification={(notif) => setNotifications((prev) => [notif, ...prev])}
-            />
+            <Suspense fallback={<SkeletonCard />}>
+              <SensorTelemetryPanel 
+                stadiumName={selectedStadium.name}
+                onNewNotification={(notif) => setNotifications((prev) => [notif, ...prev])}
+              />
+            </Suspense>
           )}
 
           {activeConsole === "logistics" && (
-            <LogisticsGuardsPanel 
-              stadiumName={selectedStadium.name}
-              onNewNotification={(notif) => setNotifications((prev) => [notif, ...prev])}
-            />
+            <Suspense fallback={<SkeletonCard />}>
+              <LogisticsGuardsPanel 
+                stadiumName={selectedStadium.name}
+                onNewNotification={(notif) => setNotifications((prev) => [notif, ...prev])}
+              />
+            </Suspense>
           )}
 
         </main>

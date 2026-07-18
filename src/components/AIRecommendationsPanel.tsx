@@ -60,10 +60,14 @@ export default function AIRecommendationsPanel({ stadiumState, stadiumId }: AIRe
     }
   };
 
-  // Re-run whenever stadiumState or stadiumId changes (simulation updates)
+  // Re-run whenever key simulation parameters change
+  const gatesHash = stadiumState.activeGates.map(g => `${g.id}:${g.pressure}`).join(",");
+  const activeIncidentsCount = stadiumState.incidents.filter(i => i.status !== "resolved").length;
+  const parkingOccupancy = stadiumState.transit.parkingLots.occupancy;
+
   useEffect(() => {
     fetchRecommendations();
-  }, [stadiumState, stadiumId]);
+  }, [stadiumId, gatesHash, activeIncidentsCount, parkingOccupancy, operationalFocus]);
 
   // Fallback items if recommendations are loading or null
   const defaultRecommendations: OrganizerAIResponse = recommendations || {

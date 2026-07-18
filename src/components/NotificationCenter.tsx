@@ -24,7 +24,7 @@ interface NotificationCenterProps {
 
 type FilterType = "all" | "unread" | "emergency" | "gate" | "crowd" | "shuttle" | "weather";
 
-export default function NotificationCenter({
+export const NotificationCenter = React.memo(function NotificationCenter({
   notifications,
   onDismiss,
   onDismissAll,
@@ -254,4 +254,6 @@ export default function NotificationCenter({
       )}
     </div>
   );
-}
+});
+
+export default NotificationCenter;

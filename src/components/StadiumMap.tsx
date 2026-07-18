@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { StadiumLocation, StadiumState } from "../types";
 import { AlertCircle, Navigation, ShoppingBag, ShieldAlert, CheckCircle, Map as MapIcon, Layers, Compass } from "lucide-react";
 import MapView from "./MapView";
@@ -45,50 +45,58 @@ export default function StadiumMap({ stadium, stadiumState, onSelectIncident }: 
   }, [selectedPin, baseLat, baseLng]);
 
   // Pre-generate localized coordinates around the active stadium
-  const gateMarkers = stadiumState.activeGates.map((gate, idx) => {
-    const offsetLat = idx === 0 ? 0.001 : idx === 1 ? -0.001 : idx === 2 ? 0.0005 : -0.0008;
-    const offsetLng = idx === 0 ? -0.0012 : idx === 1 ? 0.0012 : idx === 2 ? 0.0014 : -0.0014;
-    return {
-      id: gate.id,
-      name: gate.name,
-      type: "gate" as const,
-      lat: baseLat + offsetLat,
-      lng: baseLng + offsetLng,
-      details: `Flow: ${gate.flowRate} fans/min. Pressure: ${gate.pressure.toUpperCase()}. Status: ${gate.status.toUpperCase()}`,
-      meta: gate
-    };
-  });
+  const gateMarkers = useMemo(() => {
+    return stadiumState.activeGates.map((gate, idx) => {
+      const offsetLat = idx === 0 ? 0.001 : idx === 1 ? -0.001 : idx === 2 ? 0.0005 : -0.0008;
+      const offsetLng = idx === 0 ? -0.0012 : idx === 1 ? 0.0012 : idx === 2 ? 0.0014 : -0.0014;
+      return {
+        id: gate.id,
+        name: gate.name,
+        type: "gate" as const,
+        lat: baseLat + offsetLat,
+        lng: baseLng + offsetLng,
+        details: `Flow: ${gate.flowRate} fans/min. Pressure: ${gate.pressure.toUpperCase()}. Status: ${gate.status.toUpperCase()}`,
+        meta: gate
+      };
+    });
+  }, [stadiumState.activeGates, baseLat, baseLng]);
 
-  const concessionMarkers = stadiumState.concessions.map((conc, idx) => {
-    const offsetLat = idx === 0 ? 0.0003 : idx === 1 ? -0.0004 : idx === 2 ? 0.0007 : idx === 3 ? -0.0007 : 0.0002;
-    const offsetLng = idx === 0 ? -0.0003 : idx === 1 ? 0.0004 : idx === 2 ? -0.0007 : idx === 3 ? 0.0007 : 0.0009;
-    return {
-      id: conc.id,
-      name: conc.name,
-      type: "concession" as const,
-      lat: baseLat + offsetLat,
-      lng: baseLng + offsetLng,
-      details: `Section ${conc.section} // Waiting Time: ${conc.queueTime} mins (${conc.status.toUpperCase()})`,
-      meta: conc
-    };
-  });
+  const concessionMarkers = useMemo(() => {
+    return stadiumState.concessions.map((conc, idx) => {
+      const offsetLat = idx === 0 ? 0.0003 : idx === 1 ? -0.0004 : idx === 2 ? 0.0007 : idx === 3 ? -0.0007 : 0.0002;
+      const offsetLng = idx === 0 ? -0.0003 : idx === 1 ? 0.0004 : idx === 2 ? -0.0007 : idx === 3 ? 0.0007 : 0.0009;
+      return {
+        id: conc.id,
+        name: conc.name,
+        type: "concession" as const,
+        lat: baseLat + offsetLat,
+        lng: baseLng + offsetLng,
+        details: `Section ${conc.section} // Waiting Time: ${conc.queueTime} mins (${conc.status.toUpperCase()})`,
+        meta: conc
+      };
+    });
+  }, [stadiumState.concessions, baseLat, baseLng]);
 
-  const incidentMarkers = stadiumState.incidents.map((inc) => {
-    const isMetlife = stadium.id === "metlife";
-    const markerLat = isMetlife ? inc.lat : baseLat + (inc.lat - 40.8128);
-    const markerLng = isMetlife ? inc.lng : baseLng + (inc.lng - (-74.0742));
-    return {
-      id: inc.id,
-      name: inc.title,
-      type: "incident" as const,
-      lat: markerLat,
-      lng: markerLng,
-      details: `Type: ${inc.type.toUpperCase()} // Status: ${inc.status.toUpperCase()} // Severity: ${inc.severity.toUpperCase()}`,
-      meta: inc
-    };
-  });
+  const incidentMarkers = useMemo(() => {
+    return stadiumState.incidents.map((inc) => {
+      const isMetlife = stadium.id === "metlife";
+      const markerLat = isMetlife ? inc.lat : baseLat + (inc.lat - 40.8128);
+      const markerLng = isMetlife ? inc.lng : baseLng + (inc.lng - (-74.0742));
+      return {
+        id: inc.id,
+        name: inc.title,
+        type: "incident" as const,
+        lat: markerLat,
+        lng: markerLng,
+        details: `Type: ${inc.type.toUpperCase()} // Status: ${inc.status.toUpperCase()} // Severity: ${inc.severity.toUpperCase()}`,
+        meta: inc
+      };
+    });
+  }, [stadiumState.incidents, stadium.id, baseLat, baseLng]);
 
-  const allMarkers = [...gateMarkers, ...concessionMarkers, ...incidentMarkers];
+  const allMarkers = useMemo(() => {
+    return [...gateMarkers, ...concessionMarkers, ...incidentMarkers];
+  }, [gateMarkers, concessionMarkers, incidentMarkers]);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden h-[450px] shadow-xl relative flex flex-col md:flex-row">

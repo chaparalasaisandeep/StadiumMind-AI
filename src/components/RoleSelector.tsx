@@ -1,3 +1,4 @@
+import React from "react";
 import { UserRole } from "../types";
 import { 
   Users, 
@@ -74,7 +75,7 @@ const ROLES_META: { role: UserRole; label: string; icon: any; color: string; des
   }
 ];
 
-export default function RoleSelector({ currentRole, onChangeRole }: RoleSelectorProps) {
+export const RoleSelector = React.memo(function RoleSelector({ currentRole, onChangeRole }: RoleSelectorProps) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 pb-3 border-b border-slate-800">
@@ -139,4 +140,6 @@ export default function RoleSelector({ currentRole, onChangeRole }: RoleSelector
       </div>
     </div>
   );
-}
+});
+
+export default RoleSelector;

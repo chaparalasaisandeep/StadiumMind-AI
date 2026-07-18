@@ -9,7 +9,8 @@ import {
   collection, 
   deleteDoc,
   DocumentData,
-  QueryConstraint
+  QueryConstraint,
+  enableIndexedDbPersistence
 } from "firebase/firestore";
 import { firebaseApp } from "./config";
 import { auth } from "./auth";
@@ -84,6 +85,19 @@ let firestore: ReturnType<typeof getFirestore>;
 try {
   if (firebaseApp) {
     firestore = getFirestore(firebaseApp);
+    
+    // Enable multi-tab offline caching persistence for browser environments safely.
+    if (typeof window !== "undefined" && firestore) {
+      enableIndexedDbPersistence(firestore).catch((err) => {
+        if (err.code === "failed-precondition") {
+          console.warn("[Firestore Cache] Multi-tab conflict: Offline persistence enabled in another active tab.");
+        } else if (err.code === "unimplemented") {
+          console.warn("[Firestore Cache] Offline persistence is unsupported by the current browser client.");
+        } else {
+          console.error("[Firestore Cache] Failed to configure local disk storage:", err);
+        }
+      });
+    }
   } else {
     // Failover
     firestore = null as any;

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { firestoreServices } from "./src/firebase/firestore";
 import {
   AIServiceType,
@@ -229,10 +229,14 @@ function buildEnrichedContextString(liveContext: LiveContextData, clientContext:
   lines.push("===========================================");
 
   // Rigid Anti-Hallucination Guardrails
-  lines.push("\n[CRITICAL ANTI-HALLUCINATION INSTRUCTIONS]");
-  lines.push("1. You MUST NEVER invent or hallucinate any stadium parameters, gate names, parking levels, wait times, or layouts.");
-  lines.push("2. If the context sections above state that live telemetry (e.g. transit wait times, gate congestion, active incidents) is 'UNAVAILABLE', you MUST clearly and explicitly inform the user: 'Live [metric name] is currently unavailable.' and ask them for any missing details.");
-  lines.push("3. Under no circumstances should you generate fake figures, occupancy levels, or route numbers. Stick entirely to the facts provided in the live context block above.");
+  lines.push("\n[CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES]");
+  lines.push("1. NEVER INVENT OR HALLUCINATE: Under no circumstances fabricate or invent physical facts, stadium dimensions, parking numbers, gate load indices, security hazard details, or weather parameters.");
+  lines.push("2. DISTINGUISH DATA TYPES STRICTLY:");
+  lines.push("   - KNOWN / REAL-TIME DATA: Information directly extracted from the live telemetry above. Treat this as absolute ground truth.");
+  lines.push("   - UNKNOWN / MISSING DATA: If any metric or status (e.g. gate wait times, concessions, shuttle schedules) is absent or marked as 'UNAVAILABLE', state clearly: 'Real-time telemetry for [metric] is currently unavailable.' Encourage the user to contact on-site personnel or check local physical signage.");
+  lines.push("   - ESTIMATED DATA / PROJECTIONS: If requested to forecast or suggest plans, clearly label them as '[Projected Estimate]' or '[Recommendation]'. Explain the assumptions and logic behind your estimations (e.g. typical transit speeds, pedestrian flow rates).");
+  lines.push("3. DEFY PSEUDO-DATA: Do not present placeholders or simulated logs as real. State uncertainty gracefully when there is lack of concrete live evidence.");
+  lines.push("4. MULTILINGUAL RESPONSES: Detect and support the user's chosen language (English, Spanish, French, Arabic, Hindi, Japanese, or Portuguese) naturally. Always keep standardized nouns like 'Gate A' or 'Section 104' intact to ensure legibility against physical signage.");
   lines.push("===========================================");
 
   return lines.join("\n");
@@ -249,12 +253,17 @@ export async function runFanAI(client: GoogleGenAI, request: FanAIRequest): Prom
 You are tasked with providing helpful, clean, and structured guidance to match attendees.
 
 Using the provided real-time Firestore context, assist the user with seating, concession lookups, transport questions, and safety concerns.
-You MUST adhere strictly to the Anti-Hallucination guidelines: if information about a gate, seat layout, or concession is missing from the context, clearly tell the fan that live data is unavailable, and ask them for details.
+You MUST adhere strictly to the [CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES] in the context: if information is missing, do not invent it; instead, clearly state that live data is unavailable.
+
+=== MULTILINGUAL & TERM PERSISTENCE ===
+1. Support English, Spanish, French, Arabic, Hindi, Japanese, and Portuguese.
+2. If the user query is in Spanish, French, Arabic, Hindi, Japanese, Portuguese, or English, you MUST respond in that language.
+3. Keep technical or structural names (such as "Gate B", "Section 104") exactly in their official form.
 
 You MUST respond with a JSON object conforming exactly to this TypeScript interface:
 interface FanAIResponse {
-  answer: string; // The main answer to the fan's query, formatted beautifully in markdown. Keep it concise, friendly, and precise. Mention live status details from the context if relevant.
-  suggestedActions: string[]; // 2-3 short, actionable phrases a user could tap (e.g., "Find Food Section 104", "View Gate Status").
+  answer: string; // The main answer to the fan's query, formatted beautifully in markdown. Keep it concise, friendly, and precise. Mention live status details from the context if relevant. Respond in the user's detected language.
+  suggestedActions: string[]; // 2-3 short, actionable phrases a user could tap (e.g., "Find Food Section 104", "View Gate Status"). Respond in the user's detected language.
   seatingAdvisory?: string; // Clear instructions on how to reach their section/seat based on their userContext, if provided.
   concessionInfo?: string; // Food/restroom details nearby, wait times, or active recommendations based on live parameters.
 }`;
@@ -283,8 +292,13 @@ Please process this query, evaluate nearby services, and return the structured J
     }
 
     return JSON.parse(text) as FanAIResponse;
-  } catch (error) {
-    console.error("Error running Fan AI:", error);
+  } catch (error: any) {
+    const errStr = String(error?.message || error).toLowerCase();
+    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("limit")) {
+      console.warn("Fan AI: Gemini API quota exceeded or rate limited (429). Returning clean fallback state.");
+    } else {
+      console.error("Error running Fan AI:", error);
+    }
     return {
       answer: `I was unable to retrieve a response from the StadiumMind guide at this moment. Let's try again. (Details: ${error instanceof Error ? error.message : "Service Unavailable"})`,
       suggestedActions: ["Retry Request", "View Map Guide"],
@@ -305,13 +319,20 @@ export async function runTransportAI(client: GoogleGenAI, request: TransportAIRe
 You generate multi-modal transport advisory, congestion alerts, and routing suggestions for soccer fans and staff.
 
 Refer directly to the live multi-modal transit schedules and parking occupancies.
-You MUST adhere strictly to the Anti-Hallucination guidelines: if parking lot occupancy or shuttle delay details are not in the context, do not invent them! Set wait times or statuses to realistic fallbacks, explicitly write that live metrics are unavailable, and prompt the user for clarifications if necessary.
+You MUST adhere strictly to the [CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES] in the context: do not invent parking levels or shuttle details. If they are missing, clearly indicate they are unavailable.
+
+=== MULTILINGUAL & TRUTHFULNESS ===
+1. Respond fully in the user's preferred language (supporting English, Spanish, French, Arabic, Hindi, Japanese, and Portuguese).
+2. Clearly distinguish between:
+   - KNOWN / REAL-TIME DATA: Live transit routes and occupancies from the context.
+   - ESTIMATED DATA / PROJECTIONS: Clearly label as "[Estimate]" or "[Projected Wait]" and explain the rationale (such as distance or congestion).
+3. Do not modify or translate official transit route names or lines (e.g., "Train Line B", "Lot C Shuttle") to avoid confusion.
 
 You MUST respond with a JSON object conforming exactly to this TypeScript interface:
 interface TransportAIResponse {
-  shuttleStatus: string; // Brief active status description (e.g. "Active - normal flow", "Delayed by 15 mins").
-  recommendedTransitMode: string; // One clear recommended mode (e.g. "Express Shuttle", "Train Line B").
-  advisoryText: string; // Detailed transit advisory explanation in clear, reassuring markdown.
+  shuttleStatus: string; // Brief active status description (e.g. "Active - normal flow", "Delayed by 15 mins"). Respond in detected language.
+  recommendedTransitMode: string; // One clear recommended mode (e.g. "Express Shuttle", "Train Line B"). Respond in detected language.
+  advisoryText: string; // Detailed transit advisory explanation in clear, reassuring markdown. Respond in detected language.
   estimatedWaitMinutes: number; // Estimated average wait time in minutes.
   alternativeRoutes: {
     route: string; // Name of alternative route or line
@@ -345,8 +366,13 @@ Please synthesize local transit conditions and return a structured TransportAIRe
     }
 
     return JSON.parse(text) as TransportAIResponse;
-  } catch (error) {
-    console.error("Error running Transport AI:", error);
+  } catch (error: any) {
+    const errStr = String(error?.message || error).toLowerCase();
+    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("limit")) {
+      console.warn("Transport AI: Gemini API quota exceeded or rate limited (429). Returning clean fallback state.");
+    } else {
+      console.error("Error running Transport AI:", error);
+    }
     return {
       shuttleStatus: "Operational",
       recommendedTransitMode: "Metro Connection",
@@ -369,14 +395,19 @@ export async function runEmergencyAI(client: GoogleGenAI, request: EmergencyAIRe
 You evaluate newly reported incidents (medical, security, congestion, maintenance) and automatically calculate optimal severity index, dispatch protocols, and volunteer involvement.
 
 Cross-reference the new incident details with existing active incidents in the live context to spot duplicates or compounding hazards.
-You MUST adhere strictly to the Anti-Hallucination guidelines: never invent evacuation corridors or non-existent medical facilities.
+You MUST adhere strictly to the [CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES] in the context: never invent evacuation corridors or non-existent medical facilities.
+
+=== MULTILINGUAL & SAFETY ===
+1. Support English, Spanish, French, Arabic, Hindi, Japanese, and Portuguese.
+2. If the incident description or context indicates a target language, format your instructions and protocols in that language so that local responders can read it immediately.
+3. Keep technical/official nomenclature (like "Zone Gate A", "Sector Red-3") perfectly matching official stadium terminology.
 
 You MUST respond with a JSON object conforming exactly to this TypeScript interface:
 interface EmergencyAIResponse {
   recommendedSeverity: "low" | "medium" | "high"; // Calculated severity level.
-  dispatchProtocol: string; // Specific dispatcher instruction guidelines.
+  dispatchProtocol: string; // Specific dispatcher instruction guidelines. Respond in the responder's language if relevant.
   volunteerAlertNeeded: boolean; // Whether volunteer squads nearby should receive instant help notifications.
-  containmentSteps: string[]; // 3-4 immediate actions to contain the incident.
+  containmentSteps: string[]; // 3-4 immediate actions to contain the incident. Respond in the responder's language.
   medicalAlertLevel: "none" | "low" | "medium" | "high"; // Needed level of paramedic readiness.
 }`;
 
@@ -408,8 +439,13 @@ Please run incident triage algorithms and output the structured EmergencyAIRespo
     }
 
     return JSON.parse(text) as EmergencyAIResponse;
-  } catch (error) {
-    console.error("Error running Emergency AI:", error);
+  } catch (error: any) {
+    const errStr = String(error?.message || error).toLowerCase();
+    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("limit")) {
+      console.warn("Emergency AI: Gemini API quota exceeded or rate limited (429). Returning clean fallback state.");
+    } else {
+      console.error("Error running Emergency AI:", error);
+    }
     return {
       recommendedSeverity: "medium",
       dispatchProtocol: "Dispatch nearest field steward to verify incident conditions.",
@@ -431,15 +467,20 @@ export async function runVolunteerAI(client: GoogleGenAI, request: VolunteerAIRe
 You translate operational duties into actionable, clear, and safe step-by-step instructions for stadium volunteers.
 
 Ensure your task briefing is context-sensitive: if crowd pressures are high or active security incidents are nearby, adjust the step-by-step guidelines and safety tips to address these hazards.
-You MUST adhere strictly to the Anti-Hallucination guidelines: never refer to non-existent layout structures. If live telemetry is unavailable, acknowledge it in the tips and provide general best practices.
+You MUST adhere strictly to the [CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES] in the context: never refer to non-existent layout structures. If live telemetry is unavailable, acknowledge it in the tips and provide general best practices.
+
+=== MULTILINGUAL & SAFETY ===
+1. Support English, Spanish, French, Arabic, Hindi, Japanese, and Portuguese.
+2. If the volunteer or task context indicates a preferred language, format your instructions, safety protocols, and tips fully in that language.
+3. Keep technical or sector designations (such as "Sector B Gate 2", "First Aid Alpha") exact and untranslated to guarantee correlation with physical indicators on-site.
 
 You MUST respond with a JSON object conforming exactly to this TypeScript interface:
 interface VolunteerAIResponse {
-  safetyGuidelines: string[]; // Crucial safety measures the volunteer must adopt.
-  stepByStepInstructions: string[]; // Ordered guidelines on how to execute the specific duty.
-  escalationThreshold: string; // Direct criteria explaining when to step back and report to an Organizer/Security.
-  estimatedCompletionMinutes: number; // Approximate completion duration in minutes.
-  crowdControlTips: string[]; // Dynamic crowd psychology/care tips appropriate for this task.
+  safetyGuidelines: string[]; // Crucial safety measures the volunteer must adopt. Respond in the volunteer's language.
+  stepByStepInstructions: string[]; // Ordered guidelines on how to execute the specific duty. Respond in the volunteer's language.
+  escalationThreshold: string; // Direct criteria explaining when to step back and report to an Organizer/Security. Respond in the volunteer's language.
+  estimatedCompletionMinutes: number; // Approximate completion duration in minutes. Clearly frame this as an estimate.
+  crowdControlTips: string[]; // Dynamic crowd psychology/care tips appropriate for this task. Respond in the volunteer's language.
 }`;
 
   const contents = `
@@ -470,8 +511,13 @@ Please convert this assignment into a supportive, safe, and structured task guid
     }
 
     return JSON.parse(text) as VolunteerAIResponse;
-  } catch (error) {
-    console.error("Error running Volunteer AI:", error);
+  } catch (error: any) {
+    const errStr = String(error?.message || error).toLowerCase();
+    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("limit")) {
+      console.warn("Volunteer AI: Gemini API quota exceeded or rate limited (429). Returning clean fallback state.");
+    } else {
+      console.error("Error running Volunteer AI:", error);
+    }
     return {
       safetyGuidelines: ["Remain calm", "Do not engage with violent behaviors"],
       stepByStepInstructions: ["Assess current area", "Assist fans to nearest exit/facility as requested"],
@@ -497,19 +543,24 @@ Synthesize all live Firestore telemetry and current parameters into exactly 6 ac
 - Crowd alerts (alerts related to gate entrance load, scanning speeds, congestion indices)
 - Bottlenecks (queues, overloaded zones, transit delay hot-spots, clogged corridors)
 - Staffing recommendations (volunteer/security re-deployment, responder dispatch, patrol coverage shifts)
-- Sustainability suggestions (solar/microgrid battery, rainwater reclaimation, compost efficiency, and resource utilization)
+- Sustainability suggestions (solar/microgrid battery, rainwater reclamation, compost efficiency, and resource utilization)
 - Risk warnings (severe hazards, high queue-time spikes, medical readiness warnings, emergency incidents)
 - Priority actions (immediate next executive command steps to balance the operational load)
 
+=== TRUTHFULNESS, ESTIMATION & LANGUAGES ===
+1. Adhere strictly to the [CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES]: if live metrics are unavailable, state so clearly in the thinking log and avoid fabricating positive metrics.
+2. Label any projections or recommendations clearly with "[Projected]" or "[Estimate]".
+3. Support multilingual responses (English, Spanish, French, Arabic, Hindi, Japanese, and Portuguese) based on the operationalFocus language.
+
 You MUST respond with a JSON object conforming exactly to this TypeScript interface:
 interface OrganizerAIResponse {
-  crowdAlerts: string[]; // List of crowd alerts or flow warnings.
-  bottlenecks: string[]; // List of identified physical/virtual throughput bottleneck locations.
-  staffingRecommendations: string[]; // Specific, concrete redeployments or helper dispatch steps.
-  sustainabilitySuggestions: string[]; // Concrete recommendations to minimize carbon footprints or recycle metrics.
-  riskWarnings: string[]; // Clear risk indicators or hazard alerts based on logged incidents.
-  priorityActions: string[]; // Ordered direct actions to take immediately.
-  thinkingLog: string; // A short (2-3 sentences) logical trace explaining the optimization analysis.
+  crowdAlerts: string[]; // List of crowd alerts or flow warnings. Respond in target language.
+  bottlenecks: string[]; // List of identified physical/virtual throughput bottleneck locations. Respond in target language.
+  staffingRecommendations: string[]; // Specific, concrete redeployments or helper dispatch steps. Respond in target language.
+  sustainabilitySuggestions: string[]; // Concrete recommendations to minimize carbon footprints or recycle metrics. Respond in target language.
+  riskWarnings: string[]; // Clear risk indicators or hazard alerts based on logged incidents. Respond in target language.
+  priorityActions: string[]; // Ordered direct actions to take immediately. Respond in target language.
+  thinkingLog: string; // A short (2-3 sentences) logical trace explaining the optimization analysis. Respond in target language.
 }`;
 
   const contents = `
@@ -530,6 +581,54 @@ Please analyze this operations telemetry and return a structured OrganizerAIResp
       config: {
         systemInstruction,
         responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            crowdAlerts: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "List of crowd alerts or flow warnings. Respond in target language.",
+            },
+            bottlenecks: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "List of identified physical/virtual throughput bottleneck locations. Respond in target language.",
+            },
+            staffingRecommendations: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Specific, concrete redeployments or helper dispatch steps. Respond in target language.",
+            },
+            sustainabilitySuggestions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Concrete recommendations to minimize carbon footprints or recycle metrics. Respond in target language.",
+            },
+            riskWarnings: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Clear risk indicators or hazard alerts based on logged incidents. Respond in target language.",
+            },
+            priorityActions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Ordered direct actions to take immediately. Respond in target language.",
+            },
+            thinkingLog: {
+              type: Type.STRING,
+              description: "A short (2-3 sentences) logical trace explaining the optimization analysis. Respond in target language.",
+            },
+          },
+          required: [
+            "crowdAlerts",
+            "bottlenecks",
+            "staffingRecommendations",
+            "sustainabilitySuggestions",
+            "riskWarnings",
+            "priorityActions",
+            "thinkingLog"
+          ],
+        },
         temperature: 0.1,
       },
     });
@@ -540,8 +639,13 @@ Please analyze this operations telemetry and return a structured OrganizerAIResp
     }
 
     return JSON.parse(text) as OrganizerAIResponse;
-  } catch (error) {
-    console.error("Error running Organizer AI:", error);
+  } catch (error: any) {
+    const errStr = String(error?.message || error).toLowerCase();
+    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("limit")) {
+      console.warn("Organizer AI: Gemini API quota exceeded or rate limited (429). Returning clean fallback state.");
+    } else {
+      console.error("Error running Organizer AI:", error);
+    }
     return {
       crowdAlerts: ["Monitor scanning speed at Gate A due to simulation spikes."],
       bottlenecks: ["Gate A flow congestion identified in fallback scan."],
@@ -565,7 +669,13 @@ export async function runTranslationAI(client: GoogleGenAI, request: Translation
 You translate text accurately while preserving technical stadium terms, safety alerts, or directions correctly, maintaining high cultural sensitivity and precision.
 
 Refer to the current context if names of stadiums, gates, or specific active incidents need to be translated or validated.
-You MUST adhere strictly to the Anti-Hallucination guidelines: never invent context details.
+You MUST adhere strictly to the [CRITICAL ANTI-HALLUCINATION & TRUTHFULNESS DIRECTIVES] in the context: never invent details or expand context outside the source text.
+
+=== MULTILINGUAL & CULTURAL RULES ===
+1. Support English, Spanish, French, Arabic, Hindi, Japanese, and Portuguese.
+2. Ensure natural, fluent translations that fully maintain the core safety/operational intent of the source text.
+3. Keep technical or structural names (such as "Gate B", "Section 104") exactly in their official, original form so responders or fans can recognize them on physical signage.
+4. Distinguish clearly between verbatim translation of the source text and cultural or terminology nuances, which must only go inside "culturalNotes".
 
 You MUST respond with a JSON object conforming exactly to this TypeScript interface:
 interface TranslationAIResponse {
@@ -602,8 +712,13 @@ Please translate the text and output a structured TranslationAIResponse JSON obj
     }
 
     return JSON.parse(text) as TranslationAIResponse;
-  } catch (error) {
-    console.error("Error running Translation AI:", error);
+  } catch (error: any) {
+    const errStr = String(error?.message || error).toLowerCase();
+    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("limit")) {
+      console.warn("Translation AI: Gemini API quota exceeded or rate limited (429). Returning clean fallback state.");
+    } else {
+      console.error("Error running Translation AI:", error);
+    }
     return {
       translatedText: request.text, // Fail-safe: return original text
       detectedLanguage: "Unknown",
