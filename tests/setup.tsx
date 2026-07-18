@@ -16,6 +16,7 @@ vi.mock("firebase/app", () => ({
 let currentFirebaseUser: any = null;
 let authStateListener: any = null;
 let mockDatabase: Record<string, any> = {};
+let snapshotListeners: Array<{ docRef: any; cb: any }> = [];
 
 vi.mock("firebase/auth", () => ({
   getAuth: vi.fn(() => ({
@@ -135,6 +136,17 @@ vi.mock("firebase/firestore", () => {
       } else {
         mockDatabase[docRef] = data;
       }
+      // Notify active snapshot listeners for this docRef
+      snapshotListeners.forEach(listener => {
+        if (listener.docRef === docRef) {
+          const currentData = mockDatabase[docRef];
+          listener.cb({
+            exists: () => currentData !== null && currentData !== undefined,
+            id: typeof docRef === "string" && docRef.startsWith("users/") ? docRef.split("/")[1] : "mock-id",
+            data: () => currentData,
+          });
+        }
+      });
       return Promise.resolve();
     }),
     addDoc: vi.fn((colRef, data) => {
@@ -168,6 +180,107 @@ vi.mock("firebase/firestore", () => {
       return Promise.resolve();
     }),
     enableIndexedDbPersistence: vi.fn(() => Promise.resolve()),
+    writeBatch: vi.fn(() => {
+      const operations: Array<() => void> = [];
+      return {
+        set: vi.fn((docRef, data, options) => {
+          operations.push(() => {
+            if (options?.merge) {
+              mockDatabase[docRef] = { ...mockDatabase[docRef], ...data };
+            } else {
+              mockDatabase[docRef] = data;
+            }
+            // Notify active snapshot listeners for this docRef
+            snapshotListeners.forEach(listener => {
+              if (listener.docRef === docRef) {
+                const currentData = mockDatabase[docRef];
+                listener.cb({
+                  exists: () => currentData !== null && currentData !== undefined,
+                  id: typeof docRef === "string" && docRef.startsWith("users/") ? docRef.split("/")[1] : "mock-id",
+                  data: () => currentData,
+                });
+              }
+            });
+          });
+          return { set: () => {}, update: () => {}, delete: () => {} };
+        }),
+        update: vi.fn((docRef, data) => {
+          operations.push(() => {
+            mockDatabase[docRef] = { ...mockDatabase[docRef], ...data };
+            // Notify active snapshot listeners for this docRef
+            snapshotListeners.forEach(listener => {
+              if (listener.docRef === docRef) {
+                const currentData = mockDatabase[docRef];
+                listener.cb({
+                  exists: () => currentData !== null && currentData !== undefined,
+                  id: typeof docRef === "string" && docRef.startsWith("users/") ? docRef.split("/")[1] : "mock-id",
+                  data: () => currentData,
+                });
+              }
+            });
+          });
+          return { set: () => {}, update: () => {}, delete: () => {} };
+        }),
+        delete: vi.fn((docRef) => {
+          operations.push(() => {
+            delete mockDatabase[docRef];
+          });
+          return { set: () => {}, update: () => {}, delete: () => {} };
+        }),
+        commit: vi.fn(() => {
+          operations.forEach(op => op());
+          return Promise.resolve();
+        })
+      };
+    }),
+    onSnapshot: vi.fn((docRef, cb) => {
+      snapshotListeners.push({ docRef, cb });
+      
+      const trigger = () => {
+        let data = mockDatabase[docRef];
+        if (data === undefined) {
+          if (typeof docRef === "string" && docRef.startsWith("users/")) {
+            const email = currentFirebaseUser?.email || "test@example.com";
+            let role = "Fan";
+            let name = "Test User";
+            if (email.includes("admin")) {
+              role = "Admin";
+              name = "Admin";
+            } else if (email.includes("organizer")) {
+              role = "Organizer";
+              name = "Match Organizer";
+            } else if (email.includes("volunteer")) {
+              role = "Volunteer";
+              name = "Volunteer";
+            } else if (email.includes("sec")) {
+              role = "Security";
+              name = "Security";
+            }
+            data = {
+              uid: "user-123",
+              email,
+              displayName: name,
+              role,
+              assignedSector: "Sector North-Alpha",
+              createdAt: new Date().toISOString()
+            };
+          } else {
+            data = { name: "Test" };
+          }
+        }
+        cb({
+          exists: () => data !== null && data !== undefined,
+          id: typeof docRef === "string" && docRef.startsWith("users/") ? docRef.split("/")[1] : "mock-id",
+          data: () => data,
+        });
+      };
+
+      trigger();
+
+      return () => {
+        snapshotListeners = snapshotListeners.filter(l => l.cb !== cb);
+      };
+    }),
   };
 });
 
@@ -192,6 +305,8 @@ vi.mock("react-leaflet", () => ({
   useMap: () => ({
     setView: vi.fn(),
     flyTo: vi.fn(),
+    getCenter: vi.fn(() => ({ lat: 34.014, lng: -118.339 })),
+    getZoom: vi.fn(() => 15),
   }),
 }));
 
@@ -241,6 +356,7 @@ beforeEach(() => {
   currentFirebaseUser = null;
   authStateListener = null;
   mockDatabase = {};
+  snapshotListeners = [];
   if (typeof window !== "undefined") {
     localStorage.clear();
   }

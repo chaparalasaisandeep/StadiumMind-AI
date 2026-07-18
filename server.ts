@@ -21,6 +21,12 @@ import {
 
 dotenv.config();
 
+// Override Google Cloud / Firebase Admin project configuration to match the client VITE_FIREBASE_PROJECT_ID
+if (process.env.VITE_FIREBASE_PROJECT_ID) {
+  process.env.GCLOUD_PROJECT = process.env.VITE_FIREBASE_PROJECT_ID;
+  process.env.GOOGLE_CLOUD_PROJECT = process.env.VITE_FIREBASE_PROJECT_ID;
+}
+
 // Shared Gemini Client
 let aiClient: GoogleGenAI | null = null;
 
@@ -58,6 +64,7 @@ function getGeminiClient(): GoogleGenAI {
 
 async function startServer() {
   const app = express();
+  app.set("trust proxy", 1);
   const PORT = 3000;
 
   // Enterprise Security & Optimization Middleware
@@ -170,7 +177,7 @@ Format your responses beautifully in clean markdown, with list items, bold key t
         : [];
 
       const chat = client.chats.create({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         history: formattedHistory,
         config: {
           systemInstruction: systemPrompt,
@@ -252,7 +259,7 @@ ${JSON.stringify(stadiumState, null, 2)}
 Please perform a deep, high-reasoning operational audit and provide actionable strategies.`;
 
       const response = await client.models.generateContent({
-        model: "gemini-2.5-pro",
+        model: "gemini-3.1-pro-preview",
         contents: prompt,
         config: {
           systemInstruction: systemPrompt,

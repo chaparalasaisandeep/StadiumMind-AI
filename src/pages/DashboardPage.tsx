@@ -1,8 +1,7 @@
+import React, { lazy, Suspense } from "react";
 import DashboardSidebar from "../components/DashboardSidebar";
-import React, { useState, useEffect, lazy, Suspense } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { UserRole, StadiumState, StadiumLocation, SustainabilityMetric, VolunteerTask, AppNotification } from "../types";
-import { STADIUMS, INITIAL_STADIUM_STATE, DEFAULT_VOLUNTEER_TASKS } from "../constants";
+import { UserRole, StadiumLocation } from "../types";
+import { STADIUMS } from "../constants";
 import RoleSelector from "../components/RoleSelector";
 import AICommandCenter from "../components/AICommandCenter";
 import AIRecommendationsPanel from "../components/AIRecommendationsPanel";
@@ -11,7 +10,8 @@ import EmergencyIncidentLogger from "../components/EmergencyIncidentLogger";
 import NotificationCenter from "../components/NotificationCenter";
 import OperationsSimulator from "../components/OperationsSimulator";
 import { Skeleton, SkeletonCard } from "../components/ui/Skeleton";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
+import { useDashboard } from "../hooks/useDashboard";
 
 // Route sub-panels loaded lazily to optimize bundle size and TTI
 const StadiumMap = lazy(() => import("../components/StadiumMap"));
@@ -19,576 +19,52 @@ const AccessibilitySuite = lazy(() => import("../components/AccessibilitySuite")
 const SensorTelemetryPanel = lazy(() => import("../components/SensorTelemetryPanel"));
 const LogisticsGuardsPanel = lazy(() => import("../components/LogisticsGuardsPanel"));
 
-import { firestoreServices, executeBatch } from "../firebase/firestore";
-import { writeBatch, getFirestore, doc } from "firebase/firestore";
-import { where, limit, orderBy } from "firebase/firestore";
 import { 
-  Building2, 
   MapPin, 
-  Tv2, 
   Activity, 
-  AlertTriangle, 
   CheckCircle,
   TrendingUp,
-  Sliders,
-  Sparkles,
   LayoutDashboard,
   ShieldCheck,
   LogOut,
-  Bell,
   Search,
-  SlidersHorizontal,
-  ChevronRight,
-  Info,
+  RefreshCw,
   Leaf,
   Zap,
-  Droplet,
-  RefreshCw
+  Droplet
 } from "lucide-react";
-
-// Module-level lock to prevent concurrent seeding race conditions across multiple components or hooks
-let isSeedingActive = false;
 
 interface DashboardPageProps {
   onLogout: () => void;
 }
 
 export default function DashboardPage({ onLogout }: DashboardPageProps) {
-  const { user, switchRole } = useAuth();
-  const currentRole = user?.role || "Fan";
-
-  const [selectedStadium, setSelectedStadium] = useState<StadiumLocation>(STADIUMS[1]); // SoFi Stadium as default
-  const [stadiumState, setStadiumState] = useState<StadiumState>(INITIAL_STADIUM_STATE);
-  const [volunteerTasks, setVolunteerTasks] = useState<VolunteerTask[]>(DEFAULT_VOLUNTEER_TASKS);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeConsole, setActiveConsole] = useState<"operations" | "telemetry" | "logistics">("operations");
-  
-  // Sustainability Metric State
-  const [sustainabilityData, setSustainabilityData] = useState<SustainabilityMetric>({
-    id: `sust_sofi`,
-    stadiumId: "sofi",
-    wasteRecycledKg: 4850,
-    energySavedKwh: 12400,
-    waterSavedLitres: 85300,
-    timestamp: new Date().toISOString()
-  });
-
-  // DB Sync and Loading states
-  const [isDataLoading, setIsDataLoading] = useState(false);
-  const [dbStatus, setDbStatus] = useState<"connected" | "fallback" | "syncing">("connected");
-  const [dbError, setDbError] = useState<string | null>(null);
-
-  // Simulation parameter states
-  const [customGatePressure, setCustomGatePressure] = useState<"low" | "medium" | "high">("high");
-  const [customQueueTime, setCustomQueueTime] = useState(25);
-
-  // Comprehensive notification feeds representing multiple operational channels
-  const [notifications, setNotifications] = useState<AppNotification[]>([
-    {
-      id: "notif-1",
-      type: "emergency",
-      message: "Emergency response team dispatched: Field medics addressing minor heat fatigue reports around concourse level Section 104.",
-      timestamp: "21:11:00",
-      isRead: false
-    },
-    {
-      id: "notif-2",
-      type: "gate",
-      message: "Gate closure protocol: Gate C scanners suspended temporarily for 5 mins to balance heavy gate entry velocity.",
-      timestamp: "21:05:12",
-      isRead: false
-    },
-    {
-      id: "notif-3",
-      type: "crowd",
-      message: "Ingress Flow Spike warning: Congestion index has crossed 80% around North-West parking access corridors.",
-      timestamp: "21:02:44",
-      isRead: false
-    },
-    {
-      id: "notif-4",
-      type: "shuttle",
-      message: "Shuttle Route delay: Express Link Shuttle Fleet reporting transit slowdown of approx 6 mins due to outer perimeter gridlock.",
-      timestamp: "20:58:15",
-      isRead: true
-    },
-    {
-      id: "notif-5",
-      type: "weather",
-      message: "Weather alert: Ambient temperature exceeds index threshold. Outer misters and hydration terminals fully engaged.",
-      timestamp: "20:45:00",
-      isRead: true
-    }
-  ]);
-
-  // Seeding helper to pre-fill the database if it is empty
-  const seedInitialData = React.useCallback(async () => {
-    if (isSeedingActive) {
-      console.log("Seeding already in progress, skipping concurrent duplicate attempt.");
-      return;
-    }
-    isSeedingActive = true;
-    try {
-      console.log("Seeding initial data into Firestore...");
-      await executeBatch((batch, db) => {
-
-      STADIUMS.forEach(stadium => {
-        // 1. Seed crowd metrics for this stadium's gates
-        INITIAL_STADIUM_STATE.activeGates.forEach(gate => {
-          const crowdId = `${gate.id}_${stadium.id}`;
-          batch.set(doc(db, "crowd", crowdId), {
-              id: crowdId,
-              stadiumId: stadium.id,
-              gateId: gate.id,
-              pressure: gate.pressure,
-              flowRate: gate.flowRate,
-              congestionIndex: gate.pressure === "high" ? 85 : gate.pressure === "medium" ? 50 : 20,
-              timestamp: new Date().toISOString()
-            }, { merge: true });
-        });
-
-        // 2. Seed parking lot for this stadium
-        const lotId = `park_1_${stadium.id}`;
-        batch.set(doc(db, "parking", lotId), {
-            id: lotId,
-            stadiumId: stadium.id,
-            lotName: "Lot A (North Terminal)",
-            occupancyPercentage: stadium.id === "sofi" ? 92 : stadium.id === "metlife" ? 84 : 75,
-            status: stadium.id === "sofi" ? "busy" : "available",
-            accessibilitySpotsFree: 15
-          }, { merge: true });
-
-        // 3. Seed transit / shuttle for this stadium
-        const transportId = `shut_1_${stadium.id}`;
-        batch.set(doc(db, "transport", transportId), {
-            id: transportId,
-            stadiumId: stadium.id,
-            route: "Express Metro Link",
-            type: "shuttle",
-            activeUnits: stadium.id === "sofi" ? 12 : 8,
-            waitTimeMinutes: stadium.id === "sofi" ? 6 : 10,
-            status: "normal"
-          }, { merge: true });
-
-        // 4. Seed sustainability for this stadium
-        const sustId = `sust_1_${stadium.id}`;
-        batch.set(doc(db, "sustainability", sustId), {
-            id: sustId,
-            stadiumId: stadium.id,
-            wasteRecycledKg: stadium.id === "sofi" ? 4850 : 3120,
-            energySavedKwh: stadium.id === "sofi" ? 12400 : 9100,
-            waterSavedLitres: stadium.id === "sofi" ? 85300 : 54200,
-            timestamp: new Date().toISOString()
-          }, { merge: true });
-
-        // 5. Seed incidents for this stadium
-        INITIAL_STADIUM_STATE.incidents.forEach((inc, idx) => {
-          const incId = `inc_${idx + 1}_${stadium.id}`;
-          batch.set(doc(db, "alerts", incId), {
-              id: incId,
-              title: inc.title,
-              type: inc.type,
-              severity: inc.severity,
-              location: inc.location,
-              lat: stadium.lat + (idx === 0 ? 0.0007 : idx === 1 ? -0.0012 : 0.0008),
-              lng: stadium.lng + (idx === 0 ? -0.0005 : idx === 1 ? 0.0008 : -0.0011),
-              status: inc.status,
-              timestamp: inc.timestamp
-            }, { merge: true });
-        });
-      });
-
-      // 6. Seed volunteer tasks
-      DEFAULT_VOLUNTEER_TASKS.forEach((task, idx) => {
-        const taskId = `task_${idx + 1}`;
-        batch.set(doc(db, "volunteers", taskId), {
-            id: taskId,
-            title: task.title,
-            description: task.description,
-            assignedTo: task.assignedTo,
-            section: task.section,
-            status: task.status
-          }, { merge: true });
-      });
-
-      });
-      console.log("Successfully completed seeding initial Firestore records!");
-    } catch (err) {
-      console.error("Failed to seed initial data to Firestore. Ensure internet connection is stable:", err);
-    } finally {
-      isSeedingActive = false;
-    }
-  }, [selectedStadium.id]);
-
-  // Main setup function to initialize realtime listeners for active dashboard states
-  const setupFirestoreListeners = React.useCallback(() => {
-    setIsDataLoading(true);
-    setDbError(null);
-    setDbStatus("syncing");
-    
-    let isInitialized = false;
-    let localCrowd: any[] = [];
-    let localParking: any[] = [];
-    let localTransport: any[] = [];
-    let localAlerts: any[] = [];
-    let localSust: any[] = [];
-    let localVolunteers: any[] = [];
-    
-    const updateState = () => {
-      applyDataToState(localCrowd, localParking, localTransport, localAlerts, localSust, localVolunteers);
-    };
-
-    const unsubCrowd = firestoreServices.crowd.subscribe((docs) => {
-      localCrowd = docs;
-      if (isInitialized) updateState();
-    }, where("stadiumId", "==", selectedStadium.id));
-
-    const unsubParking = firestoreServices.parking.subscribe((docs) => {
-      localParking = docs;
-      if (isInitialized) updateState();
-    }, where("stadiumId", "==", selectedStadium.id));
-
-    const unsubTransport = firestoreServices.transport.subscribe((docs) => {
-      localTransport = docs;
-      if (isInitialized) updateState();
-    }, where("stadiumId", "==", selectedStadium.id));
-
-    const unsubAlerts = firestoreServices.alerts.subscribe((docs) => {
-      localAlerts = docs;
-      if (isInitialized) updateState();
-    }, limit(100));
-
-    const unsubSust = firestoreServices.sustainability.subscribe((docs) => {
-      localSust = docs;
-      if (isInitialized) updateState();
-    }, where("stadiumId", "==", selectedStadium.id));
-
-    const unsubVolunteers = firestoreServices.volunteers.subscribe((docs) => {
-      localVolunteers = docs;
-      if (isInitialized) updateState();
-    }, limit(100));
-
-    // Check if initial seeding is needed after brief delay to allow first snapshot
-    setTimeout(async () => {
-      const totalDocs = localCrowd.length + localParking.length + localTransport.length + localSust.length;
-      if (totalDocs === 0) {
-        await seedInitialData();
-      }
-      isInitialized = true;
-      updateState();
-      setDbStatus("connected");
-      setIsDataLoading(false);
-    }, 1500);
-
-    return () => {
-      unsubCrowd();
-      unsubParking();
-      unsubTransport();
-      unsubAlerts();
-      unsubSust();
-      unsubVolunteers();
-    };
-  }, [selectedStadium.id]);
-
-  // Helper to process fetched Firestore datasets and safely bind them to the local states
-  const applyDataToState = React.useCallback((
-    crowdDocs: any[],
-    parkingDocs: any[],
-    transportDocs: any[],
-    alertsDocs: any[],
-    sustDocs: any[],
-    volunteerDocs: any[]
-  ) => {
-    // 1. Filter by the currently active stadium venue
-    const venueCrowd = crowdDocs.filter(d => d.stadiumId === selectedStadium.id);
-    const venueParking = parkingDocs.filter(d => d.stadiumId === selectedStadium.id);
-    const venueTransport = transportDocs.filter(d => d.stadiumId === selectedStadium.id);
-    const venueSust = sustDocs.filter(d => d.stadiumId === selectedStadium.id);
-    const venueAlerts = alertsDocs.filter(d => d.id?.includes(selectedStadium.id) || d.stadiumId === selectedStadium.id || d.id?.startsWith("inc_") || d.id?.startsWith("inc-"));
-
-    // 2. Bind Volunteer tasks
-    if (volunteerDocs && volunteerDocs.length > 0) {
-      setVolunteerTasks(volunteerDocs);
-    }
-
-    // 3. Bind Sustainability data
-    if (venueSust && venueSust.length > 0) {
-      setSustainabilityData(venueSust[0]);
-    } else {
-      setSustainabilityData({
-        id: `sust_${selectedStadium.id}`,
-        stadiumId: selectedStadium.id,
-        wasteRecycledKg: selectedStadium.id === "sofi" ? 4850 : 3120,
-        energySavedKwh: selectedStadium.id === "sofi" ? 12400 : 9100,
-        waterSavedLitres: selectedStadium.id === "sofi" ? 85300 : 54200,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // 4. Update core StadiumState variables
-    setStadiumState((prev) => {
-      // Map gates data if available
-      const activeGates = prev.activeGates.map(gate => {
-        const match = venueCrowd.find(c => c.gateId === gate.id);
-        if (match) {
-          return {
-            ...gate,
-            pressure: match.pressure,
-            flowRate: match.flowRate,
-            status: match.pressure === "high" ? ("congested" as const) : ("open" as const)
-          };
-        }
-        return gate;
-      });
-
-      // Map transit state elements
-      const shuttle = venueTransport.find(t => t.type === "shuttle");
-      const parkingLot = venueParking[0];
-
-      const transit = {
-        ...prev.transit,
-        shuttles: shuttle ? {
-          id: shuttle.id,
-          route: shuttle.route,
-          active: shuttle.activeUnits,
-          waitTime: shuttle.waitTimeMinutes
-        } : prev.transit.shuttles,
-        parkingLots: parkingLot ? {
-          id: parkingLot.id,
-          occupancy: parkingLot.occupancyPercentage,
-          status: parkingLot.status === "full" ? "At Capacity" : parkingLot.status === "busy" ? "Near Capacity" : "Spaces Available"
-        } : prev.transit.parkingLots
-      };
-
-      // Map alert incidents
-      const mappedIncidents = venueAlerts.map(a => ({
-        id: a.id,
-        title: a.title,
-        type: a.type,
-        severity: a.severity,
-        location: a.location,
-        lat: a.lat || selectedStadium.lat,
-        lng: a.lng || selectedStadium.lng,
-        status: a.status || "reported",
-        timestamp: a.timestamp || "01:00"
-      }));
-
-      return {
-        ...prev,
-        activeGates,
-        transit,
-        incidents: mappedIncidents.length > 0 ? mappedIncidents : prev.incidents
-      };
-    });
-  }, [selectedStadium.id]);
-
-  // Initialize realtime listeners on active stadium selection change
-  useEffect(() => {
-    const cleanup = setupFirestoreListeners();
-    return () => {
-      cleanup();
-    };
-  }, [setupFirestoreListeners]);
-
-  // Log a new incident securely to Firestore and populate the Notification Center
-  const handleAddIncident = React.useCallback(async (newInc: {
-    title: string;
-    type: "security" | "medical" | "congestion" | "maintenance";
-    severity: "low" | "medium" | "high";
-    location: string;
-  }) => {
-    const incId = `inc-${Date.now()}`;
-    const freshIncident = {
-      id: incId,
-      stadiumId: selectedStadium.id,
-      title: newInc.title,
-      type: newInc.type,
-      severity: newInc.severity,
-      location: newInc.location,
-      lat: selectedStadium.lat + (Math.random() - 0.5) * 0.0015,
-      lng: selectedStadium.lng + (Math.random() - 0.5) * 0.0015,
-      status: "reported" as const,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    const notifType = newInc.type === "congestion" ? "crowd" : "emergency";
-    const notifObj: AppNotification = {
-      id: `notif-inc-${Date.now()}`,
-      type: notifType,
-      message: `Emergency Alert: [${newInc.severity.toUpperCase()}] ${newInc.title} logged at ${newInc.location}. Dispatch status: PENDING.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isRead: false
-    };
-
-    // Save to Firestore alert collection first
-    try {
-      await firestoreServices.alerts.save(incId, freshIncident);
-      setNotifications((prev) => [notifObj, ...prev]);
-      
-    } catch (err) {
-      console.warn("Could not save to remote Firestore. Logging locally:", err);
-      // Fallback to local state if offline/unconfigured
-      setStadiumState((prev) => ({
-        ...prev,
-        incidents: [freshIncident, ...prev.incidents]
-      }));
-      setNotifications((prev) => [notifObj, ...prev]);
-    }
-  }, [selectedStadium.id]);
-
-  // Dispatch volunteers/responders to incident and update Firestore & Notification Center
-  const handleDispatchIncident = React.useCallback(async (incidentId: string) => {
-    const targetIncident = stadiumState.incidents.find(inc => inc.id === incidentId);
-    if (!targetIncident) return;
-
-    const updatedIncident = { ...targetIncident, status: "dispatched" as const };
-    const newTask = {
-      id: `vtask-${Date.now()}`,
-      title: `Respond to: ${targetIncident.title}`,
-      description: `Dispatch requested at ${targetIncident.location}. Coordinate directly with command hub.`,
-      assignedTo: "Volunteer #" + Math.floor(Math.random() * 20 + 1),
-      section: targetIncident.location,
-      status: "in-progress" as const
-    };
-
-    const notifObj: AppNotification = {
-      id: `notif-disp-${Date.now()}`,
-      type: "emergency",
-      message: `Dispatcher Update: Authorized responders routed to ${targetIncident.location} for '${targetIncident.title}'.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isRead: false
-    };
-
-    try {
-      // Save updated status and the new volunteer task to Firestore
-      await executeBatch((batch, db) => {
-        batch.set(doc(db, "alerts", incidentId), updatedIncident, { merge: true });
-        batch.set(doc(db, "volunteers", newTask.id), newTask, { merge: true });
-      });
-      setNotifications((prev) => [notifObj, ...prev]);
-      
-    } catch (err) {
-      console.warn("Could not save dispatch status to Firestore. Fallback to local execution:", err);
-      setStadiumState((prev) => ({
-        ...prev,
-        incidents: prev.incidents.map((inc) => 
-          inc.id === incidentId ? { ...inc, status: "dispatched" as const } : inc
-        )
-      }));
-      setVolunteerTasks((prev) => [newTask, ...prev]);
-      setNotifications((prev) => [notifObj, ...prev]);
-    }
-  }, [stadiumState.incidents]);
-
-  // Resolve an incident and save status to Firestore & Notification Center
-  const handleResolveIncident = React.useCallback(async (incidentId: string) => {
-    const targetIncident = stadiumState.incidents.find(inc => inc.id === incidentId);
-    if (!targetIncident) return;
-
-    const notifObj: AppNotification = {
-      id: `notif-res-${Date.now()}`,
-      type: "crowd",
-      message: `Incident Resolved: Crisis event '${targetIncident.title}' at ${targetIncident.location} has been marked complete and cleared.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isRead: false
-    };
-
-    try {
-      await firestoreServices.alerts.save(incidentId, { ...targetIncident, status: "resolved" as const });
-      setNotifications((prev) => [notifObj, ...prev]);
-      
-    } catch (err) {
-      console.warn("Could not write resolution status to Firestore, resolving locally:", err);
-      setStadiumState((prev) => ({
-        ...prev,
-        incidents: prev.incidents.map((inc) => 
-          inc.id === incidentId ? { ...inc, status: "resolved" as const } : inc
-        )
-      }));
-      setNotifications((prev) => [notifObj, ...prev]);
-    }
-  }, [stadiumState.incidents]);
-
-  // Apply crowd simulator stress factors to Firestore & Notification Center
-  const handleApplySimParams = React.useCallback(async () => {
-    const crowdId = `gate_a_${selectedStadium.id}`;
-    const flowVal = customGatePressure === "high" ? 310 : customGatePressure === "medium" ? 160 : 50;
-    const isHigh = customGatePressure === "high";
-
-    const notifType = isHigh ? "gate" : "crowd";
-    const notifObj: AppNotification = {
-      id: `notif-sim-${Date.now()}`,
-      type: notifType,
-      message: `Simulator Trigger: Gate A sensor pressure set to [${customGatePressure.toUpperCase()}] with concessions Section 3 queue delays calculated at ${customQueueTime} mins.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isRead: false
-    };
-
-    try {
-      await firestoreServices.crowd.save(crowdId, {
-        id: crowdId,
-        stadiumId: selectedStadium.id,
-        gateId: "gate_a",
-        pressure: customGatePressure,
-        flowRate: flowVal,
-        congestionIndex: isHigh ? 95 : customGatePressure === "medium" ? 60 : 25,
-        timestamp: new Date().toISOString()
-      });
-
-      setNotifications((prev) => [notifObj, ...prev]);
-      
-    } catch (err) {
-      console.warn("Could not update simulator parameters in Firestore. Updating locally:", err);
-      setStadiumState((prev) => ({
-        ...prev,
-        activeGates: prev.activeGates.map(gate => 
-          gate.id === "gate_a" ? { ...gate, pressure: customGatePressure, flowRate: flowVal, status: isHigh ? "congested" : "open" } : gate
-        ),
-        concessions: prev.concessions.map(conc => 
-          conc.id === "conc_3" ? { ...conc, queueTime: customQueueTime, status: customQueueTime > 30 ? "overloaded" : customQueueTime > 15 ? "busy" : "clear" } : conc
-        )
-      }));
-      setNotifications((prev) => [notifObj, ...prev]);
-    }
-  }, [selectedStadium.id, customGatePressure, customQueueTime]);
-
-  const handleSimulationTriggered = React.useCallback(async (newNotification?: AppNotification, customMessage?: string) => {
-    if (newNotification) {
-      setNotifications((prev) => [newNotification, ...prev]);
-    }
-    
-  }, []);
-
-  const handleResetSimulation = React.useCallback(async () => {
-    await seedInitialData();
-    
-  }, [seedInitialData]);
-
-  const handleDismissNotification = React.useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  }, []);
-
-  const handleDismissAllNotifications = React.useCallback(() => {
-    setNotifications([]);
-  }, []);
-
-  const handleMarkAsRead = React.useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
-  }, []);
-
-  const handleMarkAllAsRead = React.useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-  }, []);
-
-  const handleNewNotification = React.useCallback((notif: AppNotification) => {
-    setNotifications((prev) => [notif, ...prev]);
-  }, []);
-  
-  const handleRoleChange = React.useCallback((r: UserRole) => {
-    switchRole(r);
-  }, [switchRole]);
+  const {
+    selectedStadium,
+    setSelectedStadium,
+    stadiumState,
+    volunteerTasks,
+    searchQuery,
+    setSearchQuery,
+    activeConsole,
+    setActiveConsole,
+    sustainabilityData,
+    isDataLoading,
+    dbStatus,
+    dbError,
+    currentRole,
+    handleDismissNotification,
+    handleDismissAllNotifications,
+    handleMarkAsRead,
+    handleMarkAllAsRead,
+    handleNewNotification,
+    handleRoleChange,
+    handleAddIncident,
+    handleDispatchIncident,
+    handleResolveIncident,
+    handleSimulationTriggered,
+    handleResetSimulation
+  } = useDashboard(onLogout);
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 font-sans selection:bg-[#6EB8E1]/30 antialiased flex">
@@ -680,7 +156,13 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           
           {/* Advanced Notification Hub */}
           <NotificationCenter
-            notifications={notifications}
+            notifications={stadiumState.incidents.map(inc => ({
+              id: inc.id,
+              type: inc.type === "congestion" ? "crowd" as const : "emergency" as const,
+              message: `Incidentlogged at ${inc.location}: [${inc.severity.toUpperCase()}] ${inc.title}.`,
+              timestamp: inc.timestamp,
+              isRead: inc.status === "resolved"
+            }))}
             onDismiss={handleDismissNotification}
             onDismissAll={handleDismissAllNotifications}
             onMarkAsRead={handleMarkAsRead}
@@ -903,26 +385,28 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                   stadium={selectedStadium}
                   onSimulationTriggered={handleSimulationTriggered}
                   onResetSimulation={handleResetSimulation}
-                  onChangeRole={switchRole}
+                  onChangeRole={handleRoleChange}
                 />
 
                 {/* Gemini Conversational Assistant */}
-                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }} className="lg:col-span-2"><AICommandCenter 
-                  currentRole={currentRole}
-                  stadiumState={stadiumState}
-                  onDispatchIncident={handleDispatchIncident}
-                  stadiumName={selectedStadium.name}
-                />
-
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }} className="lg:col-span-2">
+                  <AICommandCenter 
+                    currentRole={currentRole}
+                    stadiumState={stadiumState}
+                    onDispatchIncident={handleDispatchIncident}
+                    stadiumName={selectedStadium.name}
+                  />
                 </motion.div>
+
                 {/* Incident Logging panel */}
-                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}><EmergencyIncidentLogger 
-                  currentRole={currentRole}
-                  stadiumState={stadiumState}
-                  onAddIncident={handleAddIncident}
-                  onDispatchIncident={handleDispatchIncident}
-                  onResolveIncident={handleResolveIncident}
-                />
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}>
+                  <EmergencyIncidentLogger 
+                    currentRole={currentRole}
+                    stadiumState={stadiumState}
+                    onAddIncident={handleAddIncident}
+                    onDispatchIncident={handleDispatchIncident}
+                    onResolveIncident={handleResolveIncident}
+                  />
                 </motion.div>
 
               </div>

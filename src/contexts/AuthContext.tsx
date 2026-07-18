@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { UserRole, UserProfile } from "../types";
 import { auth } from "../firebase/auth";
 import { firestore } from "../firebase/firestore";
+import { createDefaultProfile, getDefaultSectorForRole } from "../utils/profile";
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -65,39 +66,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 } else {
                   // Document does not exist (could be during initial signup before write finishes).
                   // Provide a safe fallback without causing duplicate writes.
-                  setUser({
-                    uid: firebaseUser.uid,
-                    email: firebaseUser.email || "",
-                    displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
-                    role: "Fan",
-                    assignedSector: "Sector General",
-                    createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
-                  });
+                  setUser(createDefaultProfile(
+                    firebaseUser.uid,
+                    firebaseUser.email || "",
+                    firebaseUser.displayName || "",
+                    "Fan",
+                    firebaseUser.metadata.creationTime
+                  ));
                 }
                 setLoading(false);
               }, (error) => {
                 console.error("Firestore profile sync error:", error);
                 // Fallback to local user if Firestore is unavailable
-                setUser({
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email || "",
-                  displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
-                  role: "Fan",
-                  assignedSector: "Sector General",
-                  createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
-                });
+                setUser(createDefaultProfile(
+                  firebaseUser.uid,
+                  firebaseUser.email || "",
+                  firebaseUser.displayName || "",
+                  "Fan",
+                  firebaseUser.metadata.creationTime
+                ));
                 setLoading(false);
               });
             } else {
               // Offline fallback
-              setUser({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email || "",
-                displayName: firebaseUser.displayName || "Authorized User",
-                role: "Fan",
-                assignedSector: "Sector General",
-                createdAt: new Date().toISOString()
-              });
+              setUser(createDefaultProfile(
+                firebaseUser.uid,
+                firebaseUser.email || "",
+                firebaseUser.displayName || "Authorized User",
+                "Fan"
+              ));
               setLoading(false);
             }
           } else {
@@ -123,14 +120,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!auth) {
         // Fallback for offline/unprovisioned flow
-        setUser({
-          uid: `local-uid-${Date.now()}`,
+        setUser(createDefaultProfile(
+          `local-uid-${Date.now()}`,
           email,
-          displayName: email.split("@")[0].toUpperCase(),
-          role: role || "Fan",
-          assignedSector: "Sector North-Alpha",
-          createdAt: new Date().toISOString()
-        });
+          email.split("@")[0].toUpperCase(),
+          role || "Fan"
+        ));
         setLoading(false);
         return;
       }
@@ -150,14 +145,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
            newRole = userSnap.exists() ? (userSnap.data().role as UserRole) : "Fan";
         }
 
-        const profileData: UserProfile = {
-           uid: credential.user.uid,
-           email: credential.user.email || email,
-           displayName: credential.user.displayName || email.split("@")[0],
-           role: newRole,
-           assignedSector: newRole === "Volunteer" ? "Volunteer Desk 3" : newRole === "Security" ? "Sector West-Gate 4" : "Sector General",
-           createdAt: userSnap.exists() ? userSnap.data().createdAt : new Date().toISOString()
-        };
+        const profileData = createDefaultProfile(
+          credential.user.uid,
+          credential.user.email || email,
+          credential.user.displayName || email.split("@")[0],
+          newRole,
+          userSnap.exists() ? userSnap.data().createdAt : undefined
+        );
         await setDoc(userDocRef, profileData, { merge: true });
       }
     } catch (error: any) {
@@ -180,14 +174,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       if (!auth) {
-        setUser({
-          uid: `local-uid-${Date.now()}`,
+        setUser(createDefaultProfile(
+          `local-uid-${Date.now()}`,
           email,
-          displayName: name,
-          role: role || "Fan",
-          assignedSector: "Sector South-VIP",
-          createdAt: new Date().toISOString()
-        });
+          name,
+          role || "Fan"
+        ));
         setLoading(false);
         return;
       }
@@ -201,14 +193,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (firestore) {
         const userDocRef = doc(firestore, "users", credential.user.uid);
         const newRole = role || "Fan";
-        const newProfile: UserProfile = {
-          uid: credential.user.uid,
+        const newProfile = createDefaultProfile(
+          credential.user.uid,
           email,
-          displayName: name,
-          role: newRole,
-          assignedSector: newRole === "Volunteer" ? "Volunteer Desk 3" : newRole === "Security" ? "Sector West-Gate 4" : "Sector General",
-          createdAt: new Date().toISOString()
-        };
+          name,
+          newRole
+        );
         await setDoc(userDocRef, newProfile);
       }
     } catch (error: any) {
@@ -245,14 +235,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
              newRole = userDoc.exists() ? (userDoc.data().role as UserRole) : "Fan";
           }
           
-          const profileData: UserProfile = {
-              uid: credential.user.uid,
-              email: credential.user.email || "",
-              displayName: credential.user.displayName || credential.user.email?.split("@")[0] || "User",
-              role: newRole,
-              assignedSector: newRole === "Volunteer" ? "Volunteer Desk 3" : newRole === "Security" ? "Sector West-Gate 4" : "Sector General",
-              createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date().toISOString()
-          };
+          const profileData = createDefaultProfile(
+              credential.user.uid,
+              credential.user.email || "",
+              credential.user.displayName || "",
+              newRole,
+              userDoc.exists() ? userDoc.data().createdAt : undefined
+          );
           await setDoc(userDocRef, profileData, { merge: true });
         } catch (dbError) {
           console.warn("Firestore unavailable during Google login:", dbError);
@@ -293,7 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userDocRef = doc(firestore, "users", auth.currentUser.uid);
         await setDoc(userDocRef, { 
             role: newRole,
-            assignedSector: newRole === "Volunteer" ? "Volunteer Desk 3" : newRole === "Security" ? "Sector West-Gate 4" : "Sector General",
+            assignedSector: getDefaultSectorForRole(newRole),
         }, { merge: true });
         // State updates automatically via onSnapshot
       } catch (err: any) {
@@ -302,6 +291,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           console.error("Could not sync updated role in firestore database:", err);
         }
+        // Fallback local update to keep client operational offline
+        setUser(prev => prev ? { 
+          ...prev, 
+          role: newRole, 
+          assignedSector: getDefaultSectorForRole(newRole) 
+        } : null);
       }
     }
   }, []);
