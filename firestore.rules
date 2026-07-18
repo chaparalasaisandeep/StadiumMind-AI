@@ -41,6 +41,10 @@ service cloud.firestore {
       return hasRole('Security');
     }
 
+    function isMedical() {
+      return hasRole('Medical');
+    }
+
     function isVolunteer() {
       return hasRole('Volunteer');
     }
@@ -115,6 +119,22 @@ service cloud.firestore {
         && (data.lng is float || data.lng is int)
         && data.status is string && (data.status == 'reported' || data.status == 'dispatched' || data.status == 'resolved')
         && data.timestamp is string && data.timestamp.size() <= 50;
+    }
+
+    function isValidOperationalLog(data) {
+      return data.keys().hasAll(['id', 'stadiumId', 'type', 'title', 'description', 'severity', 'reporterId', 'reporterRole', 'location', 'timestamp', 'status'])
+        && data.keys().size() <= 11
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.stadiumId is string && data.stadiumId.size() > 0 && data.stadiumId.size() <= 128
+        && data.type is string && (data.type == 'security_alert' || data.type == 'medical_report' || data.type == 'maintenance_request' || data.type == 'general_log')
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 256
+        && data.description is string && data.description.size() <= 2000
+        && data.severity is string && (data.severity == 'low' || data.severity == 'medium' || data.severity == 'high' || data.severity == 'critical')
+        && data.reporterId is string && data.reporterId.size() <= 128
+        && data.reporterRole is string
+        && data.location is string && data.location.size() <= 256
+        && data.timestamp is string && data.timestamp.size() <= 50
+        && data.status is string && (data.status == 'open' || data.status == 'investigating' || data.status == 'resolved');
     }
 
     function isValidTransitSchedule(data) {
@@ -222,8 +242,8 @@ service cloud.firestore {
     // 5. Emergency Alerts & Incidents
     match /alerts/{alertId} {
       allow read: if isSignedIn();
-      allow create, update: if (isAdmin() || isOrganizer() || isSecurity()) && isValidId(alertId) && isValidAlert(incoming());
-      allow delete: if isAdmin() || isOrganizer() || isSecurity();
+      allow create, update: if (isAdmin() || isOrganizer() || isSecurity() || isMedical()) && isValidId(alertId) && isValidAlert(incoming());
+      allow delete: if isAdmin() || isOrganizer() || isSecurity() || isMedical();
     }
 
     // 6. Transport Route Schedules
@@ -261,5 +281,17 @@ service cloud.firestore {
       allow delete: if isAdmin() || isOrganizer();
     }
 
+    // 11. Operational Logs (Security, Medical, etc.)
+    match /operations/{logId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (isAdmin() || isOrganizer() || isSecurity() || isMedical()) && isValidId(logId) && isValidOperationalLog(incoming());
+      allow delete: if isAdmin() || isOrganizer();
+    }
+
+    // 12. Test collection for stadium operations
+    match /stadium_operations/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isAdmin();
+    }
   }
 }

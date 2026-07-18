@@ -30,7 +30,8 @@ import {
   Announcement, 
   CrowdMetrics, 
   ParkingState, 
-  SustainabilityMetric 
+  SustainabilityMetric,
+  OperationalLog
 } from "../types";
 
 export enum OperationType {
@@ -288,6 +289,14 @@ export function subscribeDocData<T = DocumentData>(
 }
 
 export const firestoreServices = {
+  operations: {
+    get: (logId: string) => getDocData<OperationalLog>("operations", logId),
+    save: (logId: string, log: Partial<OperationalLog>) => setDocData<OperationalLog>("operations", logId, log),
+    add: (log: Omit<OperationalLog, "id">) => addDocData<Omit<OperationalLog, "id">>("operations", log),
+    list: (...constraints: QueryConstraint[]) => queryCollectionDocs<OperationalLog>("operations", ...constraints),
+    subscribe: (onUpdate: (data: OperationalLog[]) => void, ...constraints: QueryConstraint[]) => subscribeCollectionDocs<OperationalLog>("operations", onUpdate, undefined, ...constraints),
+    subscribeDoc: (docId: string, onUpdate: (data: OperationalLog | null) => void) => subscribeDocData<OperationalLog>("operations", docId, onUpdate)
+  },
   users: {
     get: (uid: string) => getDocData<UserProfile>("users", uid),
     save: (uid: string, profile: Partial<UserProfile>) => setDocData<UserProfile>("users", uid, profile),

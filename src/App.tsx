@@ -39,7 +39,7 @@ function RootNavigationRouter() {
       if (user) {
         setRoute("dashboard");
       } else {
-        setRoute("landing");
+        setRoute((prev) => prev === "auth" ? "auth" : "landing");
       }
     }
   }, [user, loading]);

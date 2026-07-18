@@ -77,6 +77,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setLoading(false);
               }, (error) => {
                 console.error("Firestore profile sync error:", error);
+                // Fallback to local user if Firestore is unavailable
+                setUser({
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email || "",
+                  displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
+                  role: "Fan",
+                  assignedSector: "Sector General",
+                  createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
+                });
                 setLoading(false);
               });
             } else {
@@ -227,23 +236,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const credential = await signInWithPopup(auth, provider);
       
       if (firestore) {
-        const userDocRef = doc(firestore, "users", credential.user.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        let newRole = role;
-        if (!newRole) {
-           newRole = userDoc.exists() ? (userDoc.data().role as UserRole) : "Fan";
+        try {
+          const userDocRef = doc(firestore, "users", credential.user.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          let newRole = role;
+          if (!newRole) {
+             newRole = userDoc.exists() ? (userDoc.data().role as UserRole) : "Fan";
+          }
+          
+          const profileData: UserProfile = {
+              uid: credential.user.uid,
+              email: credential.user.email || "",
+              displayName: credential.user.displayName || credential.user.email?.split("@")[0] || "User",
+              role: newRole,
+              assignedSector: newRole === "Volunteer" ? "Volunteer Desk 3" : newRole === "Security" ? "Sector West-Gate 4" : "Sector General",
+              createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date().toISOString()
+          };
+          await setDoc(userDocRef, profileData, { merge: true });
+        } catch (dbError) {
+          console.warn("Firestore unavailable during Google login:", dbError);
         }
-        
-        const profileData: UserProfile = {
-            uid: credential.user.uid,
-            email: credential.user.email || "",
-            displayName: credential.user.displayName || credential.user.email?.split("@")[0] || "User",
-            role: newRole,
-            assignedSector: newRole === "Volunteer" ? "Volunteer Desk 3" : newRole === "Security" ? "Sector West-Gate 4" : "Sector General",
-            createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date().toISOString()
-        };
-        await setDoc(userDocRef, profileData, { merge: true });
       }
     } catch (error: any) {
       setLoading(false);

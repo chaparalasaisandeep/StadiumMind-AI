@@ -156,6 +156,20 @@ export interface StadiumLocation {
   capacity: number;
 }
 
+export interface OperationalLog {
+  id: string;
+  stadiumId: string;
+  type: "security_alert" | "medical_report" | "maintenance_request" | "general_log";
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  reporterId: string;
+  reporterRole: UserRole;
+  location: string;
+  timestamp: string;
+  status: "open" | "investigating" | "resolved";
+}
+
 export type AlertIncident = StadiumState["incidents"][number];
 
 export interface AppNotification {
