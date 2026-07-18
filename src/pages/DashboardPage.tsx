@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import DashboardSidebar from "../components/DashboardSidebar";
-import { UserRole, StadiumLocation } from "../types";
-import { STADIUMS } from "../constants";
+import DashboardHeader from "../components/DashboardHeader";
+import SustainabilityCard from "../components/SustainabilityCard";
 import RoleSelector from "../components/RoleSelector";
 import AICommandCenter from "../components/AICommandCenter";
 import AIRecommendationsPanel from "../components/AIRecommendationsPanel";
@@ -9,9 +9,10 @@ import OperationalMetrics from "../components/OperationalMetrics";
 import EmergencyIncidentLogger from "../components/EmergencyIncidentLogger";
 import NotificationCenter from "../components/NotificationCenter";
 import OperationsSimulator from "../components/OperationsSimulator";
-import { Skeleton, SkeletonCard } from "../components/ui/Skeleton";
+import { SkeletonCard } from "../components/ui/Skeleton";
 import { motion } from "motion/react";
 import { useDashboard } from "../hooks/useDashboard";
+import { STADIUMS } from "../constants";
 
 // Route sub-panels loaded lazily to optimize bundle size and TTI
 const StadiumMap = lazy(() => import("../components/StadiumMap"));
@@ -20,18 +21,11 @@ const SensorTelemetryPanel = lazy(() => import("../components/SensorTelemetryPan
 const LogisticsGuardsPanel = lazy(() => import("../components/LogisticsGuardsPanel"));
 
 import { 
-  MapPin, 
   Activity, 
   CheckCircle,
   TrendingUp,
   LayoutDashboard,
-  ShieldCheck,
-  LogOut,
-  Search,
-  RefreshCw,
-  Leaf,
-  Zap,
-  Droplet
+  ShieldCheck
 } from "lucide-react";
 
 interface DashboardPageProps {
@@ -75,81 +69,17 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* TOP NAVBAR */}
-        <header className="bg-slate-950/80 border-b border-slate-900 sticky top-0 z-30 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-[#6EB8E1]" />
-                <select
-                  id="stadium-select-input"
-                  value={selectedStadium.id}
-                  onChange={(e) => {
-                    const target = STADIUMS.find((s) => s.id === e.target.value);
-                    if (target) setSelectedStadium(target);
-                  }}
-                  aria-label="Select Stadium" className="bg-transparent text-xs font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 cursor-pointer border-b border-slate-800 rounded-sm"
-                >
-                  {STADIUMS.map((stadium) => (
-                    <option key={stadium.id} value={stadium.id} className="bg-slate-950 text-white">
-                      {stadium.name} ({stadium.city})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button onClick={onLogout} className="lg:hidden p-1 bg-slate-900 border border-slate-800 rounded-lg text-slate-400">
-                <LogOut className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              {/* Search Bar */}
-              <div className="relative flex-1 sm:w-48">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Search sectors..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  aria-label="Search sectors" className="w-full bg-slate-900/60 border border-slate-850 rounded-xl pl-8 pr-3 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-colors"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                {dbStatus === "connected" && (
-                  <div className="px-3 py-1 bg-emerald-950/20 border border-emerald-500/20 rounded-xl flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span className="text-[9px] font-mono text-emerald-400">FIRESTORE LIVE</span>
-                  </div>
-                )}
-                {dbStatus === "syncing" && (
-                  <div className="px-3 py-1 bg-amber-950/20 border border-amber-500/20 rounded-xl flex items-center gap-1.5">
-                    <RefreshCw className="h-2.5 w-2.5 text-amber-400 animate-spin" />
-                    <span className="text-[9px] font-mono text-amber-400">SYNCING</span>
-                  </div>
-                )}
-                {dbStatus === "fallback" && (
-                  <div className="group relative px-3 py-1 bg-rose-950/20 border border-rose-500/20 rounded-xl flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                    <span className="text-[9px] font-mono text-rose-400 cursor-help">OFFLINE FALLBACK</span>
-                    {/* Tooltip on hover */}
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 text-slate-200 text-[10px] p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                      {dbError || "Lost connection to live datastore."}
-                    </div>
-                  </div>
-                )}
-                
-                <button
-                  onClick={() => {}}
-                  disabled={isDataLoading}
-                  className="p-1.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-                  title="Force Refresh Data"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </header>
+        <DashboardHeader
+          selectedStadium={selectedStadium}
+          setSelectedStadium={setSelectedStadium}
+          stadiums={STADIUMS}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          dbStatus={dbStatus}
+          dbError={dbError}
+          isDataLoading={isDataLoading}
+          onLogout={onLogout}
+        />
 
         {/* WORKSPACE AREA */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 w-full">
@@ -159,7 +89,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             notifications={stadiumState.incidents.map(inc => ({
               id: inc.id,
               type: inc.type === "congestion" ? "crowd" as const : "emergency" as const,
-              message: `Incidentlogged at ${inc.location}: [${inc.severity.toUpperCase()}] ${inc.title}.`,
+              message: `Incident logged at ${inc.location}: [${inc.severity.toUpperCase()}] ${inc.title}.`,
               timestamp: inc.timestamp,
               isRead: inc.status === "resolved"
             }))}
@@ -217,7 +147,9 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               <div className="lg:col-span-2 space-y-6">
                 
                 {/* AI Recommendations Panel */}
-                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}><AIRecommendationsPanel stadiumState={stadiumState} stadiumId={selectedStadium.id} /></motion.div>
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}>
+                  <AIRecommendationsPanel stadiumState={stadiumState} stadiumId={selectedStadium.id} />
+                </motion.div>
                 
                 {/* Stadium Map */}
                 <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
@@ -233,10 +165,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
                   <Suspense fallback={
                     <div className="h-[450px] w-full flex flex-col gap-4 p-4 bg-slate-900/30 border border-slate-800 rounded-xl">
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-1/3 bg-slate-800" />
-                        <Skeleton className="h-3 w-2/3 bg-slate-800" />
-                      </div>
+                      <div className="h-6 w-1/3 bg-slate-800 animate-pulse rounded" />
+                      <div className="h-4 w-2/3 bg-slate-800 animate-pulse rounded" />
                       <div className="flex-1 w-full bg-slate-850/50 rounded-lg animate-pulse flex items-center justify-center">
                         <span className="text-xs text-slate-500 font-mono">Loading Perimeter OSM Map...</span>
                       </div>
@@ -310,69 +240,12 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                 )}
 
                 {/* Statistics & Recharts charts */}
-                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}><OperationalMetrics stadiumState={stadiumState} /></motion.div>
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}>
+                  <OperationalMetrics stadiumState={stadiumState} />
+                </motion.div>
 
                 {/* Sustainability Metric Card */}
-                <div className="bg-gradient-to-br from-[#061a15]/40 to-slate-950/90 border border-emerald-950/50 rounded-2xl p-4 shadow-xl">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-900 mb-3.5">
-                    <div>
-                      <h3 className="text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
-                        <Leaf className="h-4 w-4 text-emerald-400 animate-pulse" />
-                        Green Footprint & Environmental Sustainability
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        Live venue resource recovery metrics compiled from localized water reclamation sensors, solar inverter nodes, and organic composting centers.
-                      </p>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/40 text-emerald-400 border border-emerald-500/20 uppercase shrink-0">
-                      ISO 14001 COMPLIANT
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Waste Recycled */}
-                    <div className="bg-slate-950/50 border border-slate-900 p-3 rounded-xl flex items-center gap-3">
-                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg">
-                        <Leaf className="h-4.5 w-4.5" />
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Waste Composted</span>
-                        <h4 className="text-sm font-bold text-white mt-0.5">
-                          {sustainabilityData.wasteRecycledKg ? `${sustainabilityData.wasteRecycledKg.toLocaleString()} kg` : "0 kg"}
-                        </h4>
-                        <span className="text-[8px] text-emerald-500 block font-medium">94.2% compost efficiency</span>
-                      </div>
-                    </div>
-
-                    {/* Energy Saved */}
-                    <div className="bg-slate-950/50 border border-slate-900 p-3 rounded-xl flex items-center gap-3">
-                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg">
-                        <Zap className="h-4.5 w-4.5" />
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Energy Saved</span>
-                        <h4 className="text-sm font-bold text-white mt-0.5">
-                          {sustainabilityData.energySavedKwh ? `${sustainabilityData.energySavedKwh.toLocaleString()} kWh` : "0 kWh"}
-                        </h4>
-                        <span className="text-[8px] text-amber-500 block font-medium">Solar microgrid contribution</span>
-                      </div>
-                    </div>
-
-                    {/* Water Saved */}
-                    <div className="bg-slate-950/50 border border-slate-900 p-3 rounded-xl flex items-center gap-3">
-                      <div className="p-2.5 bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-lg">
-                        <Droplet className="h-4.5 w-4.5" />
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Water Reclaimed</span>
-                        <h4 className="text-sm font-bold text-white mt-0.5">
-                          {sustainabilityData.waterSavedLitres ? `${sustainabilityData.waterSavedLitres.toLocaleString()} Litres` : "0 Litres"}
-                        </h4>
-                        <span className="text-[8px] text-sky-500 block font-medium">Rainwater harvesting active</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <SustainabilityCard sustainabilityData={sustainabilityData} />
 
               </div>
 
