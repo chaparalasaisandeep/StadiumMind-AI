@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { 
   ShieldCheck, 
   Users, 
@@ -14,16 +14,7 @@ import {
   BellRing
 } from "lucide-react";
 import { AppNotification } from "../types";
-
-interface GuardItem {
-  id: string;
-  name: string;
-  role: "security" | "medical" | "usher" | "vip_escort";
-  status: "on_patrol" | "stationary" | "dispatched" | "rest_break";
-  sector: string;
-  radioChannel: string;
-  avatar: string;
-}
+import { useLogisticsGuards, GuardItem } from "../hooks/useLogisticsGuards";
 
 interface LogisticsGuardsPanelProps {
   stadiumName: string;
@@ -31,115 +22,29 @@ interface LogisticsGuardsPanelProps {
 }
 
 export default function LogisticsGuardsPanel({ stadiumName, onNewNotification }: LogisticsGuardsPanelProps) {
-  const [guards, setGuards] = useState<GuardItem[]>([
-    { id: "SEC-04", name: "Officer Reynolds", role: "security", status: "on_patrol", sector: "Concourse Sect 104", radioChannel: "CH-1 Main Sec", avatar: "👮‍♂️" },
-    { id: "MED-02", name: "Paramedic Lopez", role: "medical", status: "stationary", sector: "Medical Station 2", radioChannel: "CH-2 Medics", avatar: "👩‍⚕️" },
-    { id: "SEC-11", name: "Supervisor Geller", role: "security", status: "dispatched", sector: "Gate C Entryway", radioChannel: "CH-1 Main Sec", avatar: "🕵️‍♂️" },
-    { id: "USH-19", name: "Usher Lead Chen", role: "usher", status: "on_patrol", sector: "Main Concourse B", radioChannel: "CH-4 Ushers", avatar: "🙋" },
-    { id: "ESC-08", name: "Specialist Vance", role: "vip_escort", status: "rest_break", sector: "VIP Suite Lobby", radioChannel: "CH-3 Executive", avatar: "🕴️" },
-    { id: "SEC-09", name: "Officer Barnes", role: "security", status: "on_patrol", sector: "East Parking Corridors", radioChannel: "CH-1 Main Sec", avatar: "👮‍♀️" },
-    { id: "MED-05", name: "Paramedic Ross", role: "medical", status: "on_patrol", sector: "West Stand Access", radioChannel: "CH-2 Medics", avatar: "👨‍⚕️" },
-    { id: "USH-03", name: "Usher Wright", role: "usher", status: "stationary", sector: "Disabled Seating West", radioChannel: "CH-4 Ushers", avatar: "💁‍♀️" },
-  ]);
-
-  const [bulletinText, setBulletinText] = useState("");
-  const [bulletinAudience, setBulletinAudience] = useState<"all" | "security" | "medical" | "staff">("all");
-  const [selectedGuard, setSelectedGuard] = useState<GuardItem | null>(null);
-  
-  // Modal or inline states for guard editing
-  const [isReassigning, setIsReassigning] = useState(false);
-  const [newSector, setNewSector] = useState("");
-  const [newStatus, setNewStatus] = useState<GuardItem["status"]>("on_patrol");
-
-  const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
-
-  const handleBroadcastBulletin = () => {
-    if (!bulletinText.trim()) return;
-
-    const notifObj: AppNotification = {
-      id: `notif-bulletin-${Date.now()}`,
-      type: "weather", // standard type for operational announcements
-      message: `Logistics Broadcast [To: ${bulletinAudience.toUpperCase()}]: "${bulletinText}"`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isRead: false
-    };
-
-    if (onNewNotification) {
-      onNewNotification(notifObj);
-    }
-
-    setNotificationMsg(`Bulletin successfully broadcasted to ${bulletinAudience} personnel on radio channels.`);
-    setBulletinText("");
-    setTimeout(() => setNotificationMsg(null), 3000);
-  };
-
-  const handleReassign = (guardId: string) => {
-    if (!newSector) return;
-
-    setGuards((prev) =>
-      prev.map((g) => {
-        if (g.id === guardId) {
-          return {
-            ...g,
-            sector: newSector,
-            status: newStatus
-          };
-        }
-        return g;
-      })
-    );
-
-    const target = guards.find(g => g.id === guardId);
-    if (target && onNewNotification) {
-      onNewNotification({
-        id: `notif-reassign-${Date.now()}`,
-        type: "crowd",
-        message: `Personnel Deployment: ${target.name} (${target.id}) reassigned to ${newSector} with status: ${newStatus.toUpperCase().replace("_", " ")}.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        isRead: false
-      });
-    }
-
-    // Reset editing
-    setIsReassigning(false);
-    setNewSector("");
-    // Update active selection view
-    setSelectedGuard((prev) => prev ? { ...prev, sector: newSector, status: newStatus } : null);
-  };
-
-  const handleRequestBackup = (sector: string, role: string) => {
-    const notifObj: AppNotification = {
-      id: `notif-backup-${Date.now()}`,
-      type: "emergency",
-      message: `DISPATCH ALERT: Localized support backup requested at ${sector} for ${role} assistance. Units responding.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isRead: false
-    };
-
-    if (onNewNotification) {
-      onNewNotification(notifObj);
-    }
-
-    // Set any dispatched guard in break or patrol to dispatched to that sector
-    setGuards((prev) => {
-      let dispatched = false;
-      return prev.map((g) => {
-        if (!dispatched && g.role === role && g.status !== "dispatched") {
-          dispatched = true;
-          return { ...g, status: "dispatched", sector: sector };
-        }
-        return g;
-      });
-    });
-
-    setNotificationMsg(`Backup requested. Tactical dispatcher routed nearest available ${role} unit to ${sector}.`);
-    setTimeout(() => setNotificationMsg(null), 3000);
-  };
-
-  const totalPersonnel = guards.length;
-  const activePatrols = guards.filter(g => g.status === "on_patrol").length;
-  const activeDispatched = guards.filter(g => g.status === "dispatched").length;
-  const breakCount = guards.filter(g => g.status === "rest_break").length;
+  const {
+    guards,
+    bulletinText,
+    setBulletinText,
+    bulletinAudience,
+    setBulletinAudience,
+    selectedGuard,
+    setSelectedGuard,
+    isReassigning,
+    setIsReassigning,
+    newSector,
+    setNewSector,
+    newStatus,
+    setNewStatus,
+    notificationMsg,
+    handleBroadcastBulletin,
+    handleReassign,
+    handleRequestBackup,
+    totalPersonnel,
+    activePatrols,
+    activeDispatched,
+    breakCount
+  } = useLogisticsGuards(onNewNotification);
 
   return (
     <div id="logistics-guards-panel" className="bg-slate-900/40 border border-slate-850 rounded-2xl p-5 shadow-xl space-y-6">
@@ -322,84 +227,102 @@ export default function LogisticsGuardsPanel({ stadiumName, onNewNotification }:
                         <option value="rest_break">Rest Break</option>
                       </select>
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex gap-2 pt-2">
                       <button
                         onClick={() => handleReassign(selectedGuard.id)}
-                        className="flex-1 py-1 bg-emerald-600 text-white rounded text-xs font-bold transition-colors cursor-pointer"
+                        className="flex-1 py-1.5 bg-emerald-650 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-mono font-bold transition-colors cursor-pointer"
                       >
-                        Save
+                        SUBMIT REASSIGNMENT
                       </button>
                       <button
                         onClick={() => setIsReassigning(false)}
-                        className="flex-1 py-1 bg-slate-900 border border-slate-850 text-slate-400 rounded text-xs transition-colors cursor-pointer"
+                        className="px-2 py-1.5 bg-slate-900 border border-slate-800 text-slate-400 rounded-lg text-[10px] font-mono font-bold hover:text-white transition-colors cursor-pointer"
                       >
-                        Cancel
+                        CANCEL
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex gap-2 pt-2 border-t border-slate-900">
+                  <div className="flex gap-2 pt-1 border-t border-slate-900">
                     <button
                       onClick={() => {
                         setNewSector(selectedGuard.sector);
                         setNewStatus(selectedGuard.status);
                         setIsReassigning(true);
                       }}
-                      className="flex-1 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-850 text-slate-200 rounded text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="flex-1 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 hover:text-white rounded-lg text-[10px] font-mono font-bold tracking-wider transition-colors cursor-pointer"
                     >
-                      <MapPin className="h-3.5 w-3.5 text-emerald-400" />
-                      Reassign Post
+                      REDEPLOY RESPONDER
                     </button>
                     <button
                       onClick={() => handleRequestBackup(selectedGuard.sector, selectedGuard.role)}
-                      className="flex-1 py-1 bg-rose-950/40 hover:bg-rose-900/40 border border-rose-900/30 text-rose-400 rounded text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="py-2 px-3 bg-slate-900 hover:bg-rose-950/20 border border-slate-800 hover:border-rose-900/20 text-slate-400 hover:text-rose-400 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                      title="Request local assistance back-up"
                     >
-                      <AlertOctagon className="h-3.5 w-3.5 text-rose-500" />
-                      Call Backup
+                      <AlertOctagon className="h-4 w-4" />
                     </button>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-6">
-                <HeartHandshake className="h-8 w-8 text-slate-700 animate-pulse" />
-                <h4 className="text-xs font-semibold text-slate-400 mt-2">No Responder Selected</h4>
-                <p className="text-[10px] text-slate-500 mt-1 max-w-[170px]">Select any officer, medic, or steward to reassign posts or call for support backup.</p>
+              <div className="h-full flex flex-col items-center justify-center text-center p-2">
+                <Users className="h-7 w-7 text-slate-700 animate-pulse mb-2" />
+                <h4 className="text-xs font-semibold text-slate-400">Comms Inspector Offline</h4>
+                <p className="text-[10px] text-slate-500 max-w-xs mt-1 leading-relaxed">
+                  Select any registered officer or medical responder on the left grid to open encrypted telemetry and push sector reassignment mandates.
+                </p>
               </div>
             )}
           </div>
 
-          {/* Broadcast General Bulletin */}
-          <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl space-y-3">
-            <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-              <BellRing className="h-3.5 w-3.5 text-amber-400" />
-              Tactical Broadcast bulletin
-            </h3>
-            <div className="space-y-2">
-              <textarea
-                placeholder="Broadcast operational mandate or emergency sweep orders to team radio networks..."
-                value={bulletinText}
-                onChange={(e) => setBulletinText(e.target.value)}
-                className="w-full h-16 bg-slate-900 border border-slate-850 rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 resize-none"
-              />
+          {/* Broadcast Terminal */}
+          <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl space-y-3 flex flex-col justify-between">
+            <div>
               <div className="flex justify-between items-center">
+                <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Radio className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
+                  Tactical Radio Broadcaster
+                </h3>
+                <span className="text-[8px] font-mono text-slate-500 uppercase">Perimeter-Wide</span>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                Transmit instant orders directly into the audio receivers and tactical HUDs of on-duty stadium responders.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <div className="flex gap-2">
                 <select
                   value={bulletinAudience}
                   onChange={(e) => setBulletinAudience(e.target.value as any)}
-                  className="bg-slate-900 border border-slate-850 text-[10px] rounded px-1.5 py-1 text-white focus:outline-none cursor-pointer"
+                  className="bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-mono font-bold p-1 text-slate-300 focus:outline-none cursor-pointer"
                 >
-                  <option value="all">All Personnel</option>
-                  <option value="security">Security Only</option>
-                  <option value="medical">Medical Only</option>
-                  <option value="staff">Ushers/Staff</option>
+                  <option value="all">ALL UNITS</option>
+                  <option value="security">SECURITY ONLY</option>
+                  <option value="medical">MEDICS ONLY</option>
+                  <option value="staff">STEWARDS/USHERS</option>
                 </select>
-                
+                <div className="text-[8px] font-mono text-slate-500 flex items-center bg-slate-900/50 px-2 rounded border border-slate-900">
+                  FREQ: 462.56 MHz
+                </div>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Type broadcast bulletin message..."
+                  value={bulletinText}
+                  onChange={(e) => setBulletinText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleBroadcastBulletin();
+                  }}
+                  className="w-full bg-slate-900 border border-slate-850 rounded-xl pl-3 pr-9 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                />
                 <button
                   onClick={handleBroadcastBulletin}
-                  className="px-3 py-1 bg-sky-650 hover:bg-sky-600 text-white rounded text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 bg-emerald-550/10 border border-emerald-500/20 hover:bg-emerald-550/20 text-emerald-400 rounded-lg transition-colors cursor-pointer"
                 >
                   <Send className="h-3 w-3" />
-                  Broadcast
                 </button>
               </div>
             </div>
