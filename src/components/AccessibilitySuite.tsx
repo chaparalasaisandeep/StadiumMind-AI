@@ -15,7 +15,7 @@ interface AccessibilitySuiteProps {
   stadiumName: string;
 }
 
-export default function AccessibilitySuite({ stadiumName }: AccessibilitySuiteProps) {
+const AccessibilitySuite = React.memo(function AccessibilitySuite({ stadiumName }: AccessibilitySuiteProps) {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [assistanceRequested, setAssistanceRequested] = useState(false);
   const [escortType, setEscortType] = useState("wheelchair");
@@ -30,7 +30,7 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
   ];
 
   // Local Web Speech API synth simulation
-  const handleTTSReadAloud = () => {
+  const handleTTSReadAloud = useCallback(() => {
     if ("speechSynthesis" in window) {
       if (isPlayingAudio) {
         window.speechSynthesis.cancel();
@@ -46,22 +46,22 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
       // Fallback
       setIsPlayingAudio(!isPlayingAudio);
     }
-  };
+  }, [isPlayingAudio]);
 
-  const handleRequestAssistance = (e: FormEvent) => {
+  const handleRequestAssistance = useCallback((e: FormEvent) => {
     e.preventDefault();
     setAssistanceRequested(true);
     setTimeout(() => {
       // Auto reset after 8 seconds
       setAssistanceRequested(false);
     }, 8000);
-  };
+  }, []);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
+    <section aria-labelledby="accessibility-hub-title" className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
       <div className="flex justify-between items-center pb-2 border-b border-slate-800">
         <div>
-          <h3 className="text-sm font-semibold text-white flex items-center gap-1.5">
+          <h3 id="accessibility-hub-title" className="text-sm font-semibold text-white flex items-center gap-1.5">
             <Accessibility className="h-5 w-5 text-indigo-400" />
             Universal Accessibility Hub
           </h3>
@@ -82,8 +82,10 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
             </p>
             <button
               id="tts-read-btn"
+              aria-pressed={isPlayingAudio}
+              aria-label={isPlayingAudio ? "Stop Audio Accessibility Report" : "Play Audio Accessibility Report"}
               onClick={handleTTSReadAloud}
-              className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none ${
                 isPlayingAudio 
                   ? "bg-rose-950/40 border border-rose-500/30 text-rose-400" 
                   : "bg-indigo-950/40 hover:bg-indigo-900/40 border border-indigo-500/30 text-indigo-400"
@@ -123,7 +125,7 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
                       value={escortSection}
                       onChange={(e) => setEscortSection(e.target.value)}
                       placeholder="e.g. 102"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-white"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-white focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
                       required
                     />
                   </div>
@@ -132,7 +134,7 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
                     <select
                       value={escortType}
                       onChange={(e) => setEscortType(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-white"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-white focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
                     >
                       <option value="wheelchair">♿ Wheelchair Escort</option>
                       <option value="sight">👁️ Sight Guide</option>
@@ -142,8 +144,9 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
                 </div>
                 <button
                   type="submit"
+                  aria-label="Confirm Escort Request"
                   id="request-escort-btn"
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-1.5 rounded-lg text-xs cursor-pointer transition-colors"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-1.5 rounded-lg text-xs cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:ring-indigo-400 focus-visible:outline-none"
                 >
                   Confirm Escort Request
                 </button>
@@ -159,7 +162,7 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
               <Compass className="h-4 w-4 text-indigo-400" />
               Elevator and Accessible Ramp Monitor
             </h4>
-            <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1" aria-live="polite" aria-atomic="true">
               {elevators.map((el, idx) => (
                 <div key={idx} className="flex justify-between items-center text-[11px] p-1.5 bg-slate-900/60 rounded border border-slate-850">
                   <div>
@@ -186,6 +189,7 @@ export default function AccessibilitySuite({ stadiumName }: AccessibilitySuitePr
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
-}
+});
+export default AccessibilitySuite;

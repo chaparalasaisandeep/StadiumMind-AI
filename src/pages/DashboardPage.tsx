@@ -1,3 +1,4 @@
+import DashboardSidebar from "../components/DashboardSidebar";
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { UserRole, StadiumState, StadiumLocation, SustainabilityMetric, VolunteerTask, AppNotification } from "../types";
@@ -10,6 +11,7 @@ import EmergencyIncidentLogger from "../components/EmergencyIncidentLogger";
 import NotificationCenter from "../components/NotificationCenter";
 import OperationsSimulator from "../components/OperationsSimulator";
 import { Skeleton, SkeletonCard } from "../components/ui/Skeleton";
+import { motion, AnimatePresence } from "motion/react";
 
 // Route sub-panels loaded lazily to optimize bundle size and TTI
 const StadiumMap = lazy(() => import("../components/StadiumMap"));
@@ -17,7 +19,9 @@ const AccessibilitySuite = lazy(() => import("../components/AccessibilitySuite")
 const SensorTelemetryPanel = lazy(() => import("../components/SensorTelemetryPanel"));
 const LogisticsGuardsPanel = lazy(() => import("../components/LogisticsGuardsPanel"));
 
-import { firestoreServices } from "../firebase/firestore";
+import { firestoreServices, executeBatch } from "../firebase/firestore";
+import { writeBatch, getFirestore, doc } from "firebase/firestore";
+import { where, limit, orderBy } from "firebase/firestore";
 import { 
   Building2, 
   MapPin, 
@@ -118,7 +122,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   ]);
 
   // Seeding helper to pre-fill the database if it is empty
-  const seedInitialData = async () => {
+  const seedInitialData = React.useCallback(async () => {
     if (isSeedingActive) {
       console.log("Seeding already in progress, skipping concurrent duplicate attempt.");
       return;
@@ -126,14 +130,13 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     isSeedingActive = true;
     try {
       console.log("Seeding initial data into Firestore...");
-      const seedPromises: Promise<any>[] = [];
+      await executeBatch((batch, db) => {
 
       STADIUMS.forEach(stadium => {
         // 1. Seed crowd metrics for this stadium's gates
         INITIAL_STADIUM_STATE.activeGates.forEach(gate => {
           const crowdId = `${gate.id}_${stadium.id}`;
-          seedPromises.push(
-            firestoreServices.crowd.save(crowdId, {
+          batch.set(doc(db, "crowd", crowdId), {
               id: crowdId,
               stadiumId: stadium.id,
               gateId: gate.id,
@@ -141,27 +144,23 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               flowRate: gate.flowRate,
               congestionIndex: gate.pressure === "high" ? 85 : gate.pressure === "medium" ? 50 : 20,
               timestamp: new Date().toISOString()
-            })
-          );
+            }, { merge: true });
         });
 
         // 2. Seed parking lot for this stadium
         const lotId = `park_1_${stadium.id}`;
-        seedPromises.push(
-          firestoreServices.parking.save(lotId, {
+        batch.set(doc(db, "parking", lotId), {
             id: lotId,
             stadiumId: stadium.id,
             lotName: "Lot A (North Terminal)",
             occupancyPercentage: stadium.id === "sofi" ? 92 : stadium.id === "metlife" ? 84 : 75,
             status: stadium.id === "sofi" ? "busy" : "available",
             accessibilitySpotsFree: 15
-          })
-        );
+          }, { merge: true });
 
         // 3. Seed transit / shuttle for this stadium
         const transportId = `shut_1_${stadium.id}`;
-        seedPromises.push(
-          firestoreServices.transport.save(transportId, {
+        batch.set(doc(db, "transport", transportId), {
             id: transportId,
             stadiumId: stadium.id,
             route: "Express Metro Link",
@@ -169,27 +168,23 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             activeUnits: stadium.id === "sofi" ? 12 : 8,
             waitTimeMinutes: stadium.id === "sofi" ? 6 : 10,
             status: "normal"
-          })
-        );
+          }, { merge: true });
 
         // 4. Seed sustainability for this stadium
         const sustId = `sust_1_${stadium.id}`;
-        seedPromises.push(
-          firestoreServices.sustainability.save(sustId, {
+        batch.set(doc(db, "sustainability", sustId), {
             id: sustId,
             stadiumId: stadium.id,
             wasteRecycledKg: stadium.id === "sofi" ? 4850 : 3120,
             energySavedKwh: stadium.id === "sofi" ? 12400 : 9100,
             waterSavedLitres: stadium.id === "sofi" ? 85300 : 54200,
             timestamp: new Date().toISOString()
-          })
-        );
+          }, { merge: true });
 
         // 5. Seed incidents for this stadium
         INITIAL_STADIUM_STATE.incidents.forEach((inc, idx) => {
           const incId = `inc_${idx + 1}_${stadium.id}`;
-          seedPromises.push(
-            firestoreServices.alerts.save(incId, {
+          batch.set(doc(db, "alerts", incId), {
               id: incId,
               title: inc.title,
               type: inc.type,
@@ -199,81 +194,104 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               lng: stadium.lng + (idx === 0 ? -0.0005 : idx === 1 ? 0.0008 : -0.0011),
               status: inc.status,
               timestamp: inc.timestamp
-            })
-          );
+            }, { merge: true });
         });
       });
 
       // 6. Seed volunteer tasks
       DEFAULT_VOLUNTEER_TASKS.forEach((task, idx) => {
         const taskId = `task_${idx + 1}`;
-        seedPromises.push(
-          firestoreServices.volunteers.save(taskId, {
+        batch.set(doc(db, "volunteers", taskId), {
             id: taskId,
             title: task.title,
             description: task.description,
             assignedTo: task.assignedTo,
             section: task.section,
             status: task.status
-          })
-        );
+          }, { merge: true });
       });
 
-      await Promise.all(seedPromises);
+      });
       console.log("Successfully completed seeding initial Firestore records!");
     } catch (err) {
       console.error("Failed to seed initial data to Firestore. Ensure internet connection is stable:", err);
     } finally {
       isSeedingActive = false;
     }
-  };
+  }, [selectedStadium.id]);
 
-  // Main fetch function to retrieve active dashboard states from Firestore
-  const fetchFirestoreData = async () => {
+  // Main setup function to initialize realtime listeners for active dashboard states
+  const setupFirestoreListeners = React.useCallback(() => {
     setIsDataLoading(true);
     setDbError(null);
     setDbStatus("syncing");
-    try {
-      // Fetch all required collections in parallel
-      const [crowdDocs, parkingDocs, transportDocs, alertsDocs, sustDocs, volunteerDocs] = await Promise.all([
-        firestoreServices.crowd.list(),
-        firestoreServices.parking.list(),
-        firestoreServices.transport.list(),
-        firestoreServices.alerts.list(),
-        firestoreServices.sustainability.list(),
-        firestoreServices.volunteers.list()
-      ]);
+    
+    let isInitialized = false;
+    let localCrowd: any[] = [];
+    let localParking: any[] = [];
+    let localTransport: any[] = [];
+    let localAlerts: any[] = [];
+    let localSust: any[] = [];
+    let localVolunteers: any[] = [];
+    
+    const updateState = () => {
+      applyDataToState(localCrowd, localParking, localTransport, localAlerts, localSust, localVolunteers);
+    };
 
-      // Calculate total documents across key collections to determine if seeding is required
-      const totalDocs = crowdDocs.length + parkingDocs.length + transportDocs.length + sustDocs.length;
+    const unsubCrowd = firestoreServices.crowd.subscribe((docs) => {
+      localCrowd = docs;
+      if (isInitialized) updateState();
+    }, where("stadiumId", "==", selectedStadium.id));
+
+    const unsubParking = firestoreServices.parking.subscribe((docs) => {
+      localParking = docs;
+      if (isInitialized) updateState();
+    }, where("stadiumId", "==", selectedStadium.id));
+
+    const unsubTransport = firestoreServices.transport.subscribe((docs) => {
+      localTransport = docs;
+      if (isInitialized) updateState();
+    }, where("stadiumId", "==", selectedStadium.id));
+
+    const unsubAlerts = firestoreServices.alerts.subscribe((docs) => {
+      localAlerts = docs;
+      if (isInitialized) updateState();
+    }, limit(100));
+
+    const unsubSust = firestoreServices.sustainability.subscribe((docs) => {
+      localSust = docs;
+      if (isInitialized) updateState();
+    }, where("stadiumId", "==", selectedStadium.id));
+
+    const unsubVolunteers = firestoreServices.volunteers.subscribe((docs) => {
+      localVolunteers = docs;
+      if (isInitialized) updateState();
+    }, limit(100));
+
+    // Check if initial seeding is needed after brief delay to allow first snapshot
+    setTimeout(async () => {
+      const totalDocs = localCrowd.length + localParking.length + localTransport.length + localSust.length;
       if (totalDocs === 0) {
         await seedInitialData();
-        // Immediately fetch the newly seeded documents
-        const [reCrowd, reParking, reTransport, reAlerts, reSust, reVolunteers] = await Promise.all([
-          firestoreServices.crowd.list(),
-          firestoreServices.parking.list(),
-          firestoreServices.transport.list(),
-          firestoreServices.alerts.list(),
-          firestoreServices.sustainability.list(),
-          firestoreServices.volunteers.list()
-        ]);
-        applyDataToState(reCrowd, reParking, reTransport, reAlerts, reSust, reVolunteers);
-      } else {
-        applyDataToState(crowdDocs, parkingDocs, transportDocs, alertsDocs, sustDocs, volunteerDocs);
       }
+      isInitialized = true;
+      updateState();
       setDbStatus("connected");
-    } catch (err: any) {
-      console.error("Error communicating with Firestore. Using clean fallback states:", err);
-      setDbStatus("fallback");
-      setDbError(err.message || "Unable to connect to Firestore.");
-      // Fallback: Maintain the default mock data as-is to ensure excellent UX
-    } finally {
       setIsDataLoading(false);
-    }
-  };
+    }, 1500);
+
+    return () => {
+      unsubCrowd();
+      unsubParking();
+      unsubTransport();
+      unsubAlerts();
+      unsubSust();
+      unsubVolunteers();
+    };
+  }, [selectedStadium.id]);
 
   // Helper to process fetched Firestore datasets and safely bind them to the local states
-  const applyDataToState = (
+  const applyDataToState = React.useCallback((
     crowdDocs: any[],
     parkingDocs: any[],
     transportDocs: any[],
@@ -362,15 +380,18 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         incidents: mappedIncidents.length > 0 ? mappedIncidents : prev.incidents
       };
     });
-  };
-
-  // Retrieve fresh telemetry on active stadium selection change
-  useEffect(() => {
-    fetchFirestoreData();
   }, [selectedStadium.id]);
 
+  // Initialize realtime listeners on active stadium selection change
+  useEffect(() => {
+    const cleanup = setupFirestoreListeners();
+    return () => {
+      cleanup();
+    };
+  }, [setupFirestoreListeners]);
+
   // Log a new incident securely to Firestore and populate the Notification Center
-  const handleAddIncident = async (newInc: {
+  const handleAddIncident = React.useCallback(async (newInc: {
     title: string;
     type: "security" | "medical" | "congestion" | "maintenance";
     severity: "low" | "medium" | "high";
@@ -403,7 +424,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     try {
       await firestoreServices.alerts.save(incId, freshIncident);
       setNotifications((prev) => [notifObj, ...prev]);
-      await fetchFirestoreData();
+      
     } catch (err) {
       console.warn("Could not save to remote Firestore. Logging locally:", err);
       // Fallback to local state if offline/unconfigured
@@ -413,10 +434,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       }));
       setNotifications((prev) => [notifObj, ...prev]);
     }
-  };
+  }, [selectedStadium.id]);
 
   // Dispatch volunteers/responders to incident and update Firestore & Notification Center
-  const handleDispatchIncident = async (incidentId: string) => {
+  const handleDispatchIncident = React.useCallback(async (incidentId: string) => {
     const targetIncident = stadiumState.incidents.find(inc => inc.id === incidentId);
     if (!targetIncident) return;
 
@@ -440,12 +461,12 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
     try {
       // Save updated status and the new volunteer task to Firestore
-      await Promise.all([
-        firestoreServices.alerts.save(incidentId, updatedIncident),
-        firestoreServices.volunteers.save(newTask.id, newTask)
-      ]);
+      await executeBatch((batch, db) => {
+        batch.set(doc(db, "alerts", incidentId), updatedIncident, { merge: true });
+        batch.set(doc(db, "volunteers", newTask.id), newTask, { merge: true });
+      });
       setNotifications((prev) => [notifObj, ...prev]);
-      await fetchFirestoreData();
+      
     } catch (err) {
       console.warn("Could not save dispatch status to Firestore. Fallback to local execution:", err);
       setStadiumState((prev) => ({
@@ -457,10 +478,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       setVolunteerTasks((prev) => [newTask, ...prev]);
       setNotifications((prev) => [notifObj, ...prev]);
     }
-  };
+  }, [stadiumState.incidents]);
 
   // Resolve an incident and save status to Firestore & Notification Center
-  const handleResolveIncident = async (incidentId: string) => {
+  const handleResolveIncident = React.useCallback(async (incidentId: string) => {
     const targetIncident = stadiumState.incidents.find(inc => inc.id === incidentId);
     if (!targetIncident) return;
 
@@ -475,7 +496,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     try {
       await firestoreServices.alerts.save(incidentId, { ...targetIncident, status: "resolved" as const });
       setNotifications((prev) => [notifObj, ...prev]);
-      await fetchFirestoreData();
+      
     } catch (err) {
       console.warn("Could not write resolution status to Firestore, resolving locally:", err);
       setStadiumState((prev) => ({
@@ -486,10 +507,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       }));
       setNotifications((prev) => [notifObj, ...prev]);
     }
-  };
+  }, [stadiumState.incidents]);
 
   // Apply crowd simulator stress factors to Firestore & Notification Center
-  const handleApplySimParams = async () => {
+  const handleApplySimParams = React.useCallback(async () => {
     const crowdId = `gate_a_${selectedStadium.id}`;
     const flowVal = customGatePressure === "high" ? 310 : customGatePressure === "medium" ? 160 : 50;
     const isHigh = customGatePressure === "high";
@@ -515,7 +536,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       });
 
       setNotifications((prev) => [notifObj, ...prev]);
-      await fetchFirestoreData();
+      
     } catch (err) {
       console.warn("Could not update simulator parameters in Firestore. Updating locally:", err);
       setStadiumState((prev) => ({
@@ -529,118 +550,50 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       }));
       setNotifications((prev) => [notifObj, ...prev]);
     }
-  };
+  }, [selectedStadium.id, customGatePressure, customQueueTime]);
 
-  const handleSimulationTriggered = async (newNotification?: AppNotification, customMessage?: string) => {
+  const handleSimulationTriggered = React.useCallback(async (newNotification?: AppNotification, customMessage?: string) => {
     if (newNotification) {
       setNotifications((prev) => [newNotification, ...prev]);
     }
-    await fetchFirestoreData();
-  };
+    
+  }, []);
 
-  const handleResetSimulation = async () => {
+  const handleResetSimulation = React.useCallback(async () => {
     await seedInitialData();
-    await fetchFirestoreData();
-  };
+    
+  }, [seedInitialData]);
 
-  const handleDismissNotification = (id: string) => {
+  const handleDismissNotification = React.useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
+  }, []);
 
-  const handleDismissAllNotifications = () => {
+  const handleDismissAllNotifications = React.useCallback(() => {
     setNotifications([]);
-  };
+  }, []);
 
-  const handleMarkAsRead = (id: string) => {
+  const handleMarkAsRead = React.useCallback((id: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
-  };
+  }, []);
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = React.useCallback(() => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-  };
+  }, []);
+
+  const handleNewNotification = React.useCallback((notif: AppNotification) => {
+    setNotifications((prev) => [notif, ...prev]);
+  }, []);
+  
+  const handleRoleChange = React.useCallback((r: UserRole) => {
+    switchRole(r);
+  }, [switchRole]);
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 font-sans selection:bg-[#6EB8E1]/30 antialiased flex">
       
-      {/* LEFT SIDEBAR: Navigation Console */}
-      <aside className="w-64 bg-slate-950 border-r border-slate-900 hidden lg:flex flex-col justify-between shrink-0">
-        <div className="p-5 space-y-6">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-[#6EB8E1]/10 border border-[#6EB8E1]/20 rounded-xl">
-              <Tv2 className="h-5 w-5 text-[#6EB8E1]" />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-white tracking-tight">StadiumMind AI</h1>
-              <span className="text-[9px] font-mono text-slate-500 uppercase">SECTOR_OS v3.1</span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block px-2 mb-2">Primary Console</span>
-            <button 
-              onClick={() => setActiveConsole("operations")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-xl transition-all text-left border ${
-                activeConsole === "operations" 
-                  ? "bg-slate-900 border-slate-800 text-white" 
-                  : "text-slate-400 hover:text-white hover:bg-slate-900 border-transparent"
-              }`}
-            >
-              <LayoutDashboard className={`h-4 w-4 ${activeConsole === "operations" ? "text-[#6EB8E1]" : ""}`} />
-              Operations Center
-            </button>
-            <button 
-              onClick={() => setActiveConsole("telemetry")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-xl transition-all text-left border ${
-                activeConsole === "telemetry" 
-                  ? "bg-slate-900 border-slate-800 text-white" 
-                  : "text-slate-400 hover:text-white hover:bg-slate-900 border-transparent"
-              }`}
-            >
-              <Activity className={`h-4 w-4 ${activeConsole === "telemetry" ? "text-[#6EB8E1]" : ""}`} />
-              Sensor Telemetry
-            </button>
-            <button 
-              onClick={() => setActiveConsole("logistics")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-xl transition-all text-left border ${
-                activeConsole === "logistics" 
-                  ? "bg-slate-900 border-slate-800 text-white" 
-                  : "text-slate-400 hover:text-white hover:bg-slate-900 border-transparent"
-              }`}
-            >
-              <ShieldCheck className={`h-4 w-4 ${activeConsole === "logistics" ? "text-[#6EB8E1]" : ""}`} />
-              Logistics Guards
-            </button>
-          </div>
-
-          <div className="p-3 bg-gradient-to-br from-indigo-950/20 to-purple-950/20 border border-indigo-500/10 rounded-xl">
-            <div className="flex items-center gap-1.5 mb-1 text-[#C8ABE6]">
-              <Sparkles className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-bold">Advisory Active</span>
-            </div>
-            <p className="text-[10px] text-slate-400 leading-normal">
-              Simulation systems ready. Inject stress parameters via "Crowd Stress Simulator" to query the AI Advisor.
-            </p>
-          </div>
-        </div>
-
-        <div className="p-5 border-t border-slate-900">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-bold text-white truncate max-w-[120px]">{user?.displayName || "AUTHORITY"}</div>
-              <div className="text-[9px] font-mono text-[#6EB8E1]">{currentRole}</div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-              title="Sign Out"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </aside>
+      <DashboardSidebar activeConsole={activeConsole} setActiveConsole={setActiveConsole} onLogout={onLogout} />
 
       {/* MAIN CONTAINER */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -658,7 +611,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                     const target = STADIUMS.find((s) => s.id === e.target.value);
                     if (target) setSelectedStadium(target);
                   }}
-                  className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer border-b border-slate-800"
+                  aria-label="Select Stadium" className="bg-transparent text-xs font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 cursor-pointer border-b border-slate-800 rounded-sm"
                 >
                   {STADIUMS.map((stadium) => (
                     <option key={stadium.id} value={stadium.id} className="bg-slate-950 text-white">
@@ -681,7 +634,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                   placeholder="Search sectors..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900/60 border border-slate-850 rounded-xl pl-8 pr-3 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  aria-label="Search sectors" className="w-full bg-slate-900/60 border border-slate-850 rounded-xl pl-8 pr-3 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-colors"
                 />
               </div>
 
@@ -699,14 +652,18 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                   </div>
                 )}
                 {dbStatus === "fallback" && (
-                  <div className="px-3 py-1 bg-rose-950/20 border border-rose-500/20 rounded-xl flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                    <span className="text-[9px] font-mono text-rose-400" title={dbError || ""}>OFFLINE FALLBACK</span>
+                  <div className="group relative px-3 py-1 bg-rose-950/20 border border-rose-500/20 rounded-xl flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    <span className="text-[9px] font-mono text-rose-400 cursor-help">OFFLINE FALLBACK</span>
+                    {/* Tooltip on hover */}
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 text-slate-200 text-[10px] p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      {dbError || "Lost connection to live datastore."}
+                    </div>
                   </div>
                 )}
                 
                 <button
-                  onClick={fetchFirestoreData}
+                  onClick={() => {}}
                   disabled={isDataLoading}
                   className="p-1.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
                   title="Force Refresh Data"
@@ -731,7 +688,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           />
 
           {/* Core Role Selector Switch */}
-          <RoleSelector currentRole={currentRole} onChangeRole={(r) => switchRole(r)} />
+          <RoleSelector currentRole={currentRole} onChangeRole={handleRoleChange} />
 
           {/* Mobile Console Tab Switcher (Visible only on mobile/tablet screens where sidebar is hidden) */}
           <div className="flex lg:hidden bg-slate-950 p-1 border border-slate-900 rounded-xl gap-1" id="mobile-console-switcher">
@@ -778,7 +735,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               <div className="lg:col-span-2 space-y-6">
                 
                 {/* AI Recommendations Panel */}
-                <AIRecommendationsPanel stadiumState={stadiumState} stadiumId={selectedStadium.id} />
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}><AIRecommendationsPanel stadiumState={stadiumState} stadiumId={selectedStadium.id} /></motion.div>
                 
                 {/* Stadium Map */}
                 <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
@@ -871,7 +828,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                 )}
 
                 {/* Statistics & Recharts charts */}
-                <OperationalMetrics stadiumState={stadiumState} />
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}><OperationalMetrics stadiumState={stadiumState} /></motion.div>
 
                 {/* Sustainability Metric Card */}
                 <div className="bg-gradient-to-br from-[#061a15]/40 to-slate-950/90 border border-emerald-950/50 rounded-2xl p-4 shadow-xl">
@@ -950,21 +907,23 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                 />
 
                 {/* Gemini Conversational Assistant */}
-                <AICommandCenter 
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }} className="lg:col-span-2"><AICommandCenter 
                   currentRole={currentRole}
                   stadiumState={stadiumState}
                   onDispatchIncident={handleDispatchIncident}
                   stadiumName={selectedStadium.name}
                 />
 
+                </motion.div>
                 {/* Incident Logging panel */}
-                <EmergencyIncidentLogger 
+                <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}><EmergencyIncidentLogger 
                   currentRole={currentRole}
                   stadiumState={stadiumState}
                   onAddIncident={handleAddIncident}
                   onDispatchIncident={handleDispatchIncident}
                   onResolveIncident={handleResolveIncident}
                 />
+                </motion.div>
 
               </div>
 
@@ -975,7 +934,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             <Suspense fallback={<SkeletonCard />}>
               <SensorTelemetryPanel 
                 stadiumName={selectedStadium.name}
-                onNewNotification={(notif) => setNotifications((prev) => [notif, ...prev])}
+                onNewNotification={handleNewNotification}
               />
             </Suspense>
           )}
@@ -984,7 +943,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             <Suspense fallback={<SkeletonCard />}>
               <LogisticsGuardsPanel 
                 stadiumName={selectedStadium.name}
-                onNewNotification={(notif) => setNotifications((prev) => [notif, ...prev])}
+                onNewNotification={handleNewNotification}
               />
             </Suspense>
           )}

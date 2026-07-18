@@ -1,3 +1,4 @@
+import { auth } from "../firebase/auth";
 import { UserRole } from "../types";
 
 export interface ChatMessage {
@@ -19,14 +20,19 @@ export interface GeminiService {
   analyzeBottlenecks(stadiumStateJson: string, query: string, userRole?: UserRole): Promise<string>;
 }
 
+
+const analyzeCache = new Map<string, { data: string, timestamp: number }>();
+const CACHE_TTL = 60000; // 1 minute cache TTL for AI analysis to avoid redundant network requests
+
 export const geminiService: GeminiService = {
+
   async chat(message, history, userRole) {
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-        },
+"Authorization": `Bearer ${auth?.currentUser ? await auth.currentUser.getIdToken() : ""}` },
         body: JSON.stringify({
           message,
           history,
@@ -46,8 +52,15 @@ export const geminiService: GeminiService = {
     }
   },
 
-  async analyzeBottlenecks(stadiumStateJson, query, userRole = "operator") {
+    async analyzeBottlenecks(stadiumStateJson, query, userRole = "operator") {
     try {
+      const cacheKey = JSON.stringify({stadiumStateJson, query, userRole});
+      const cached = analyzeCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        console.log("Serving AI analysis from local cache.");
+        return cached.data;
+      }
+
       let parsedState = {};
       try {
         parsedState = JSON.parse(stadiumStateJson);
@@ -59,7 +72,7 @@ export const geminiService: GeminiService = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-        },
+"Authorization": `Bearer ${auth?.currentUser ? await auth.currentUser.getIdToken() : ""}` },
         body: JSON.stringify({
           stadiumState: parsedState,
           query,
@@ -72,7 +85,9 @@ export const geminiService: GeminiService = {
       }
 
       const data = await response.json();
-      return data.text || "No analytical insights compiled.";
+      const resultText = data.text || "No analytical insights compiled.";
+      analyzeCache.set(cacheKey, { data: resultText, timestamp: Date.now() });
+      return resultText;
     } catch (error) {
       console.error("Error calling server advisor API:", error);
       return `[Advisor System Link Error]: Could not stream operational metrics to high-thinking reasoning core. Details: ${error instanceof Error ? error.message : "Network Disruption"}`;

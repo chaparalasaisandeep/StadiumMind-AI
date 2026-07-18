@@ -1,4 +1,5 @@
 import { firestoreServices } from "../firebase/firestore";
+import { where } from "firebase/firestore";
 
 export interface AnalyticsService {
   /**
@@ -16,8 +17,8 @@ export const analyticsService: AnalyticsService = {
   async getDashboardAnalyticsSummary(stadiumId) {
     try {
       const [crowdDocs, sustDocs, alertsDocs] = await Promise.all([
-        firestoreServices.crowd.list().catch(() => []),
-        firestoreServices.sustainability.list().catch(() => []),
+        firestoreServices.crowd.list(where("stadiumId", "==", stadiumId)).catch(() => []),
+        firestoreServices.sustainability.list(where("stadiumId", "==", stadiumId)).catch(() => []),
         firestoreServices.alerts.list().catch(() => [])
       ]);
 

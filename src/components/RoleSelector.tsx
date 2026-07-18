@@ -77,7 +77,7 @@ const ROLES_META: { role: UserRole; label: string; icon: any; color: string; des
 
 export const RoleSelector = React.memo(function RoleSelector({ currentRole, onChangeRole }: RoleSelectorProps) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+    <section aria-label="Role Environment Selector" className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 pb-3 border-b border-slate-800">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
@@ -93,7 +93,7 @@ export const RoleSelector = React.memo(function RoleSelector({ currentRole, onCh
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div role="tablist" aria-label="Available System Roles" className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {ROLES_META.map((meta) => {
           const IconComponent = meta.icon;
           const isActive = currentRole === meta.role;
@@ -103,7 +103,9 @@ export const RoleSelector = React.memo(function RoleSelector({ currentRole, onCh
               key={meta.role}
               id={`role-btn-${meta.role.toLowerCase()}`}
               onClick={() => onChangeRole(meta.role)}
-              className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-300 group cursor-pointer ${
+              role="tab"
+              aria-selected={isActive}
+              className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-300 group cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none ${
                 isActive
                   ? `bg-gradient-to-br ${meta.color} shadow-lg ring-1 ring-[#6EB8E1]`
                   : "bg-slate-800/40 hover:bg-slate-800 border-slate-800/80 text-slate-400 hover:text-slate-200"
@@ -138,7 +140,7 @@ export const RoleSelector = React.memo(function RoleSelector({ currentRole, onCh
           );
         })()}
       </div>
-    </div>
+    </section>
   );
 });
 

@@ -1,3 +1,4 @@
+import { auth } from "../firebase/auth";
 import { AIServiceType, AIOrchestrationResponse } from "./aiTypes";
 
 /**
@@ -13,7 +14,7 @@ export async function callAIOrchestrator<T>(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-      },
+"Authorization": `Bearer ${auth?.currentUser ? await auth.currentUser.getIdToken() : ""}` },
       body: JSON.stringify({
         serviceType,
         payload,

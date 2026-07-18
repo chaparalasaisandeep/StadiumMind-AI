@@ -1,4 +1,5 @@
 import { firestoreServices } from "../firebase/firestore";
+import { where } from "firebase/firestore";
 import { LocationCoordinate } from "./maps";
 
 export interface NavigationAIService {
@@ -19,7 +20,7 @@ export interface NavigationAIService {
 export const navigationAIService: NavigationAIService = {
   async suggestAlternativeGate(stadiumId, currentGateId, currentPosition) {
     try {
-      const crowdDocs = await firestoreServices.crowd.list().catch(() => []);
+      const crowdDocs = await firestoreServices.crowd.list(where("stadiumId", "==", stadiumId)).catch(() => []);
       const venueCrowd = crowdDocs.filter(d => d.stadiumId === stadiumId);
 
       if (venueCrowd.length > 1) {

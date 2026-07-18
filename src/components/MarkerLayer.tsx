@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 
@@ -28,7 +28,6 @@ const createCustomIcon = (type: "gate" | "concession" | "incident", severity?: s
 
   let colorClass = "bg-[#6EB8E1]";
   let glyph = "G";
-
   if (type === "concession") {
     colorClass = "bg-amber-500";
     glyph = "C";
@@ -54,36 +53,49 @@ const createCustomIcon = (type: "gate" | "concession" | "incident", severity?: s
   return icon;
 };
 
-export default function MarkerLayer({ markers, onMarkerClick, renderPopupContent }: MarkerLayerProps) {
+// Internal Memoized Marker to prevent recreating eventHandlers and re-rendering Marker
+const MemoizedMarker = React.memo(({ marker, onMarkerClick, renderPopupContent }: { marker: MapMarkerData, onMarkerClick?: (marker: MapMarkerData) => void, renderPopupContent?: (marker: MapMarkerData) => React.ReactNode }) => {
+  const severity = marker.meta?.severity;
+  const icon = createCustomIcon(marker.type, severity);
+
+  const eventHandlers = React.useMemo(() => ({
+    click: () => {
+      if (onMarkerClick) {
+        onMarkerClick(marker);
+      }
+    },
+  }), [onMarkerClick, marker]);
+
+  return (
+    <Marker
+      position={[marker.lat, marker.lng]}
+      icon={icon}
+      eventHandlers={eventHandlers}
+    >
+      {renderPopupContent && (
+        <Popup>
+          <div className="text-slate-900 font-sans p-1">
+            {renderPopupContent(marker)}
+          </div>
+        </Popup>
+      )}
+    </Marker>
+  );
+});
+
+const MarkerLayer = React.memo(function MarkerLayer({ markers, onMarkerClick, renderPopupContent }: MarkerLayerProps) {
   return (
     <>
-      {markers.map((marker) => {
-        const severity = marker.meta?.severity;
-        const icon = createCustomIcon(marker.type, severity);
-
-        return (
-          <Marker
-            key={`${marker.type}-${marker.id}`}
-            position={[marker.lat, marker.lng]}
-            icon={icon}
-            eventHandlers={{
-              click: () => {
-                if (onMarkerClick) {
-                  onMarkerClick(marker);
-                }
-              },
-            }}
-          >
-            {renderPopupContent && (
-              <Popup>
-                <div className="text-slate-900 font-sans p-1">
-                  {renderPopupContent(marker)}
-                </div>
-              </Popup>
-            )}
-          </Marker>
-        );
-      })}
+      {markers.map((marker) => (
+        <MemoizedMarker
+          key={`${marker.type}-${marker.id}`}
+          marker={marker}
+          onMarkerClick={onMarkerClick}
+          renderPopupContent={renderPopupContent}
+        />
+      ))}
     </>
   );
-}
+});
+
+export default MarkerLayer;

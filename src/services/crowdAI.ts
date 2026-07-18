@@ -1,4 +1,5 @@
 import { firestoreServices } from "../firebase/firestore";
+import { where } from "firebase/firestore";
 
 export interface CrowdAIService {
   /**
@@ -14,7 +15,7 @@ export interface CrowdAIService {
 export const crowdAIService: CrowdAIService = {
   async forecastGatePressure(stadiumId) {
     try {
-      const crowdDocs = await firestoreServices.crowd.list().catch(() => []);
+      const crowdDocs = await firestoreServices.crowd.list(where("stadiumId", "==", stadiumId)).catch(() => []);
       const venueCrowd = crowdDocs.filter(d => d.stadiumId === stadiumId);
 
       if (venueCrowd.length > 0) {

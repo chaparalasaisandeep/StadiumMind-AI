@@ -1,3 +1,4 @@
+import { auth } from "../firebase/auth";
 import React, { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
 import { ChatMessage, StadiumState, UserRole } from "../types";
@@ -25,7 +26,8 @@ interface AICommandCenterProps {
   stadiumName: string;
 }
 
-export default function AICommandCenter({ currentRole, stadiumState, onDispatchIncident, stadiumName }: AICommandCenterProps) {
+
+const AICommandCenter = React.memo(function AICommandCenter({ currentRole, stadiumState, onDispatchIncident, stadiumName }: AICommandCenterProps) {
   const [activeTab, setActiveTab] = useState<"assistant" | "advisor">("assistant");
   
   // Ref for automatic scrolling
@@ -141,7 +143,8 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+"Authorization": `Bearer ${auth?.currentUser ? await auth.currentUser.getIdToken() : ""}` },
         body: JSON.stringify({
           message: userQuery,
           role: currentRole,
@@ -194,7 +197,8 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+"Authorization": `Bearer ${auth?.currentUser ? await auth.currentUser.getIdToken() : ""}` },
         body: JSON.stringify({
           message: userMsg.text,
           role: currentRole,
@@ -237,7 +241,8 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
     try {
       const response = await fetch("/api/advisor/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+"Authorization": `Bearer ${auth?.currentUser ? await auth.currentUser.getIdToken() : ""}` },
         body: JSON.stringify({
           stadiumState,
           query: advisorQuery,
@@ -256,7 +261,7 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-[520px]">
+    <section aria-label="AI Command Center" className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-[520px]">
       {/* Header Tabs */}
       <div className="flex border-b border-slate-800 pb-3 mb-4 justify-between items-center">
         <div className="flex gap-2">
@@ -340,7 +345,8 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
                     <button
                       type="button"
                       onClick={() => handleCopyText(msg.text, msg.id)}
-                      className="absolute top-2 right-2 p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                      aria-label="Copy message text"
+                      className="absolute top-2 right-2 p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#6EB8E1] focus-visible:outline-none"
                       title="Copy response"
                     >
                       {copiedMsgId === msg.id ? (
@@ -400,7 +406,8 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
               type="submit"
               id="ai-send-btn"
               disabled={isChatLoading || !inputText.trim()}
-              className="bg-[#6EB8E1] text-black font-semibold rounded-xl px-3 hover:bg-sky-400 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
+              aria-label="Send message"
+              className="bg-[#6EB8E1] text-black font-semibold rounded-xl px-3 hover:bg-sky-400 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:ring-[#6EB8E1] focus-visible:outline-none"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -438,7 +445,8 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
                 id="run-simulation-btn"
                 onClick={handleRunSimulation}
                 disabled={isAdvisorLoading}
-                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-indigo-900/30 disabled:opacity-50"
+                aria-busy={isAdvisorLoading}
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-indigo-900/30 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:ring-indigo-400 focus-visible:outline-none"
               >
                 {isAdvisorLoading ? (
                   <>
@@ -510,6 +518,9 @@ export default function AICommandCenter({ currentRole, stadiumState, onDispatchI
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
-}
+
+
+});
+export default AICommandCenter;

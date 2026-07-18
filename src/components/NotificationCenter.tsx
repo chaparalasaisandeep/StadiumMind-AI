@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from "motion/react";
 import React, { useState } from "react";
 import { 
   Bell, 
@@ -95,7 +96,7 @@ export const NotificationCenter = React.memo(function NotificationCenter({
   ];
 
   return (
-    <div id="stadium-notification-center" className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl transition-all duration-300 overflow-hidden">
+    <section aria-label="Notification Center" id="stadium-notification-center" className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl transition-all duration-300 overflow-hidden">
       {/* Header Bar */}
       <div className="p-4 bg-slate-950/70 border-b border-slate-850 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -128,7 +129,7 @@ export const NotificationCenter = React.memo(function NotificationCenter({
               <button
                 onClick={onMarkAllAsRead}
                 disabled={unreadCount === 0}
-                className="px-2.5 py-1 text-[10px] font-semibold bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:text-indigo-400 text-slate-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                className="px-2.5 py-1 text-[10px] font-semibold bg-slate-900 hover:bg-slate-850 focus-visible:ring-1 focus-visible:ring-indigo-400 focus-visible:outline-none border border-slate-800 hover:text-indigo-400 text-slate-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
                 title="Mark all notifications as read"
               >
                 <Check className="h-3 w-3" />
@@ -136,7 +137,7 @@ export const NotificationCenter = React.memo(function NotificationCenter({
               </button>
               <button
                 onClick={onDismissAll}
-                className="px-2.5 py-1 text-[10px] font-semibold bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:text-rose-400 text-slate-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 text-[10px] font-semibold bg-slate-900 hover:bg-slate-850 focus-visible:ring-1 focus-visible:ring-indigo-400 focus-visible:outline-none border border-slate-800 hover:text-rose-400 text-slate-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                 title="Dismiss and purge active log"
               >
                 <Trash2 className="h-3 w-3" />
@@ -147,7 +148,7 @@ export const NotificationCenter = React.memo(function NotificationCenter({
 
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="p-1 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors text-xs cursor-pointer"
+            aria-expanded={isOpen} className="p-1 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors text-xs cursor-pointer focus-visible:ring-1 focus-visible:ring-indigo-400 focus-visible:outline-none"
           >
             {isOpen ? "Collapse" : "Expand"}
           </button>
@@ -179,12 +180,18 @@ export const NotificationCenter = React.memo(function NotificationCenter({
 
           {/* Notifications Log Stack */}
           <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+            <AnimatePresence mode="popLayout">
             {filteredNotifications.length > 0 ? (
               filteredNotifications.map((notif) => {
                 const config = getNotificationConfig(notif.type);
                 const Icon = config.icon;
                 return (
-                  <div
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
                     key={notif.id}
                     className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all relative group ${
                       notif.isRead 
@@ -237,7 +244,7 @@ export const NotificationCenter = React.memo(function NotificationCenter({
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })
             ) : (
@@ -248,11 +255,11 @@ export const NotificationCenter = React.memo(function NotificationCenter({
                   <p className="text-[10px] text-slate-500 mt-1">New alerts will broadcast dynamically from simulated events.</p>
                 </div>
               </div>
-            )}
+            )}</AnimatePresence>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 });
 

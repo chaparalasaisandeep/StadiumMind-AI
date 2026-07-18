@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   Activity, 
   CheckCircle2, 
@@ -35,7 +35,7 @@ interface SensorTelemetryPanelProps {
   onNewNotification?: (notif: AppNotification) => void;
 }
 
-export default function SensorTelemetryPanel({ stadiumName, onNewNotification }: SensorTelemetryPanelProps) {
+const SensorTelemetryPanel = React.memo(function SensorTelemetryPanel({ stadiumName, onNewNotification }: SensorTelemetryPanelProps) {
   const [sensors, setSensors] = useState<SensorItem[]>([
     { id: "SEN-01", name: "Gate A Turnstile Tracker", type: "turnstile", status: "online", zone: "Zone A North", value: "128 scans/min", lastActive: "Just now", battery: 94 },
     { id: "SEN-02", name: "AI Concourse Cam 104", type: "camera", status: "online", zone: "Sector 100", value: "88% clarity (High density)", lastActive: "Just now", battery: 100 },
@@ -80,7 +80,7 @@ export default function SensorTelemetryPanel({ stadiumName, onNewNotification }:
     return () => clearInterval(interval);
   }, []);
 
-  const handleRunDiagnostics = () => {
+  const handleRunDiagnostics = useCallback(() => {
     setIsDiagnosing(true);
     setDiagnosticResult(null);
     setTimeout(() => {
@@ -92,9 +92,9 @@ export default function SensorTelemetryPanel({ stadiumName, onNewNotification }:
         `All active nodes query complete. Total monitored: ${sensors.length}. Online: ${sensors.length - offlineCount - warningCount}. Warnings flagged: ${warningCount}. Fatal faults: ${offlineCount}. Routing telemetry to stadium operations center.`
       );
     }, 2000);
-  };
+  }, [sensors]);
 
-  const handleRecalibrate = (sensorId: string) => {
+  const handleRecalibrate = useCallback((sensorId: string) => {
     setSensors((prev) =>
       prev.map((s) => {
         if (s.id === sensorId) {
@@ -124,9 +124,9 @@ export default function SensorTelemetryPanel({ stadiumName, onNewNotification }:
     if (selectedSensor?.id === sensorId) {
       setSelectedSensor((prev) => prev ? { ...prev, status: "online", battery: Math.max(prev.battery, 80) } : null);
     }
-  };
+  }, [sensors, onNewNotification]);
 
-  const handleSimulateMalfunction = (sensorId: string) => {
+  const handleSimulateMalfunction = useCallback((sensorId: string) => {
     setSensors((prev) =>
       prev.map((s) => {
         if (s.id === sensorId) {
@@ -156,7 +156,7 @@ export default function SensorTelemetryPanel({ stadiumName, onNewNotification }:
     if (selectedSensor?.id === sensorId) {
       setSelectedSensor((prev) => prev ? { ...prev, status: "offline", battery: 0 } : null);
     }
-  };
+  }, [sensors, onNewNotification]);
 
   const filteredSensors = sensors.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -438,4 +438,5 @@ export default function SensorTelemetryPanel({ stadiumName, onNewNotification }:
 
     </div>
   );
-}
+});
+export default SensorTelemetryPanel;

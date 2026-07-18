@@ -1,3 +1,4 @@
+import React from "react";
 import { StadiumState } from "../types";
 import { 
   BarChart, 
@@ -16,7 +17,7 @@ interface OperationalMetricsProps {
   stadiumState: StadiumState;
 }
 
-export default function OperationalMetrics({ stadiumState }: OperationalMetricsProps) {
+const OperationalMetrics = React.memo(function OperationalMetrics({ stadiumState }: OperationalMetricsProps) {
   // Concession metrics for Recharts
   const concessionData = stadiumState.concessions.map((c) => ({
     name: c.name.split(" (")[0], // Clean up names for fit
@@ -125,4 +126,5 @@ export default function OperationalMetrics({ stadiumState }: OperationalMetricsP
       </div>
     </div>
   );
-}
+});
+export default OperationalMetrics;

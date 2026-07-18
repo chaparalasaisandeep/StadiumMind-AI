@@ -10,9 +10,15 @@ function MapController({ center, zoom }: MapControllerProps) {
   const map = useMap();
   useEffect(() => {
     if (map && center) {
-      map.setView(center, zoom || map.getZoom());
+      const [lat, lng] = center;
+      const currentCenter = map.getCenter();
+      const currentZoom = map.getZoom();
+      const targetZoom = zoom || currentZoom;
+      if (currentCenter.lat !== lat || currentCenter.lng !== lng || currentZoom !== targetZoom) {
+        map.setView(center, targetZoom);
+      }
     }
-  }, [map, center, zoom]);
+  }, [map, center[0], center[1], zoom]);
   return null;
 }
 

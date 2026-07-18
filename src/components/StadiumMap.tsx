@@ -1,3 +1,4 @@
+import React from "react";
 import { useState, useEffect, useMemo } from "react";
 import { StadiumLocation, StadiumState } from "../types";
 import { AlertCircle, Navigation, ShoppingBag, ShieldAlert, CheckCircle, Map as MapIcon, Layers, Compass } from "lucide-react";
@@ -13,7 +14,7 @@ interface StadiumMapProps {
   onSelectIncident?: (incidentId: string) => void;
 }
 
-export default function StadiumMap({ stadium, stadiumState, onSelectIncident }: StadiumMapProps) {
+const StadiumMap = React.memo(function StadiumMap({ stadium, stadiumState, onSelectIncident }: StadiumMapProps) {
   const [selectedPin, setSelectedPin] = useState<MapMarkerData | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showIndoor, setShowIndoor] = useState(true);
@@ -208,4 +209,5 @@ export default function StadiumMap({ stadium, stadiumState, onSelectIncident }: 
       </div>
     </div>
   );
-}
+});
+export default StadiumMap;

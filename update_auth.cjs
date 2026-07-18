@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+const fs = require('fs');
+
+const code = `import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -115,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!auth) {
         // Fallback for offline/unprovisioned flow
         setUser({
-          uid: `local-uid-${Date.now()}`,
+          uid: \`local-uid-\${Date.now()}\`,
           email,
           displayName: email.split("@")[0].toUpperCase(),
           role: role || "Fan",
@@ -172,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!auth) {
         setUser({
-          uid: `local-uid-${Date.now()}`,
+          uid: \`local-uid-\${Date.now()}\`,
           email,
           displayName: name,
           role: role || "Fan",
@@ -318,3 +320,6 @@ export function useAuth() {
   }
   return context;
 }
+`;
+
+fs.writeFileSync('src/contexts/AuthContext.tsx', code);

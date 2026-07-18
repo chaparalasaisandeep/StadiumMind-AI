@@ -21,7 +21,7 @@ interface AIRecommendationsPanelProps {
   stadiumId: string;
 }
 
-export default function AIRecommendationsPanel({ stadiumState, stadiumId }: AIRecommendationsPanelProps) {
+const AIRecommendationsPanel = React.memo(function AIRecommendationsPanel({ stadiumState, stadiumId }: AIRecommendationsPanelProps) {
   const [recommendations, setRecommendations] = useState<OrganizerAIResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,4 +246,5 @@ export default function AIRecommendationsPanel({ stadiumState, stadiumId }: AIRe
       )}
     </div>
   );
-}
+});
+export default AIRecommendationsPanel;

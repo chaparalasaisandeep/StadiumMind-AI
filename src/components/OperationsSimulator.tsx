@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { 
   Users, 
   Car, 
@@ -15,7 +15,8 @@ import {
   Lock,
   ArrowRight
 } from "lucide-react";
-import { firestoreServices } from "../firebase/firestore";
+import { firestoreServices, executeBatch } from "../firebase/firestore";
+import { doc } from "firebase/firestore";
 import { StadiumLocation, AppNotification, AlertIncident } from "../types";
 
 interface OperationsSimulatorProps {
@@ -29,7 +30,7 @@ interface OperationsSimulatorProps {
   onChangeRole: (role: any) => void;
 }
 
-export default function OperationsSimulator({
+const OperationsSimulator = React.memo(function OperationsSimulator({
   currentRole,
   stadium,
   onSimulationTriggered,
@@ -42,7 +43,7 @@ export default function OperationsSimulator({
 
   const isAdmin = currentRole.toLowerCase() === "admin";
 
-  const triggerSimulation = async (type: string, name: string) => {
+  const triggerSimulation = useCallback(async (type: string, name: string) => {
     if (!isAdmin) return;
     setLoadingAction(type);
     setSuccessMessage(null);
@@ -107,30 +108,31 @@ export default function OperationsSimulator({
         }
 
         case "gate_closure": {
-          // 1. Update Firestore crowd to high/closed
           const crowdId = `gate_b_${stadium.id}`;
-          await firestoreServices.crowd.save(crowdId, {
-            id: crowdId,
-            stadiumId: stadium.id,
-            gateId: "gate_b",
-            pressure: "high",
-            flowRate: 15, // near zero because closed/blocked
-            congestionIndex: 99,
-            timestamp: now.toISOString()
-          });
-
-          // 2. Save a specific congestion alert incident
           const incId = `inc-gate-close-${Date.now()}`;
-          await firestoreServices.alerts.save(incId, {
-            id: incId,
-            title: "Gate B Scanner Core Down",
-            type: "congestion",
-            severity: "high",
-            location: "Gate B Inbound",
-            lat: stadium.lat - 0.0004,
-            lng: stadium.lng + 0.0006,
-            status: "reported",
-            timestamp: simpleTimestamp
+
+          await executeBatch((batch, db) => {
+            batch.set(doc(db, "crowd", crowdId), {
+              id: crowdId,
+              stadiumId: stadium.id,
+              gateId: "gate_b",
+              pressure: "high",
+              flowRate: 15,
+              congestionIndex: 99,
+              timestamp: now.toISOString()
+            }, { merge: true });
+            
+            batch.set(doc(db, "alerts", incId), {
+              id: incId,
+              title: "Gate B Scanner Core Down",
+              type: "congestion",
+              severity: "high",
+              location: "Gate B Inbound",
+              lat: stadium.lat - 0.0004,
+              lng: stadium.lng + 0.0006,
+              status: "reported",
+              timestamp: simpleTimestamp
+            }, { merge: true });
           });
 
           notifObj = {
@@ -267,9 +269,9 @@ export default function OperationsSimulator({
     } finally {
       setLoadingAction(null);
     }
-  };
+  }, [isAdmin, stadium, onSimulationTriggered]);
 
-  const handleReset = async () => {
+  const handleReset = useCallback(async () => {
     setLoadingAction("reset");
     setSuccessMessage(null);
     try {
@@ -281,7 +283,7 @@ export default function OperationsSimulator({
     } finally {
       setLoadingAction(null);
     }
-  };
+  }, [isAdmin, onResetSimulation]);
 
   const simulatorActions = [
     {
@@ -460,4 +462,5 @@ export default function OperationsSimulator({
       )}
     </div>
   );
-}
+});
+export default OperationsSimulator;

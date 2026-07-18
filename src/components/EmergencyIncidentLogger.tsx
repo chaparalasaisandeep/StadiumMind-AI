@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { StadiumState, UserRole } from "../types";
 import { 
   ShieldAlert, 
@@ -24,7 +24,7 @@ interface EmergencyIncidentLoggerProps {
   onResolveIncident: (incidentId: string) => void;
 }
 
-export default function EmergencyIncidentLogger({
+const EmergencyIncidentLogger = React.memo(function EmergencyIncidentLogger({
   currentRole,
   stadiumState,
   onAddIncident,
@@ -39,7 +39,7 @@ export default function EmergencyIncidentLogger({
 
   const hasWritePermission = ["Security", "Medical", "Organizer", "Admin"].includes(currentRole);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !location.trim()) return;
 
@@ -47,7 +47,7 @@ export default function EmergencyIncidentLogger({
     setTitle("");
     setLocation("");
     setShowAddForm(false);
-  };
+  }, [title, type, severity, location, onAddIncident]);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-[520px]">
@@ -238,4 +238,5 @@ export default function EmergencyIncidentLogger({
       )}
     </div>
   );
-}
+});
+export default EmergencyIncidentLogger;

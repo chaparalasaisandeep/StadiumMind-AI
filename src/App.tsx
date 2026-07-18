@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { motion, AnimatePresence } from "motion/react";
+import { m, AnimatePresence, LazyMotion, domAnimation } from "motion/react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { BrainCircuit } from "lucide-react";
 
@@ -70,7 +70,7 @@ function RootNavigationRouter() {
       <Suspense fallback={<PremiumSuspenseLoader />}>
         <AnimatePresence mode="wait">
           {route === "landing" && (
-            <motion.div
+            <m.div
               key="landing"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -81,11 +81,11 @@ function RootNavigationRouter() {
                 onGetStarted={handleGetStarted} 
                 onGoToAuth={() => setRoute("auth")} 
               />
-            </motion.div>
+            </m.div>
           )}
 
           {route === "auth" && (
-            <motion.div
+            <m.div
               key="auth"
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -96,11 +96,11 @@ function RootNavigationRouter() {
                 onAuthSuccess={handleAuthSuccess} 
                 onBackToLanding={() => setRoute("landing")} 
               />
-            </motion.div>
+            </m.div>
           )}
 
           {route === "dashboard" && (
-            <motion.div
+            <m.div
               key="dashboard"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -108,7 +108,7 @@ function RootNavigationRouter() {
               transition={{ duration: 0.4 }}
             >
               <DashboardPage onLogout={handleLogoutSuccess} />
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </Suspense>
@@ -119,10 +119,11 @@ function RootNavigationRouter() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <RootNavigationRouter />
-      </AuthProvider>
+      <LazyMotion features={domAnimation}>
+        <AuthProvider>
+          <RootNavigationRouter />
+        </AuthProvider>
+      </LazyMotion>
     </ErrorBoundary>
   );
 }
-
